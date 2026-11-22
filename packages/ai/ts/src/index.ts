@@ -1,9 +1,16 @@
-export interface AiOptions {
-  baseUrl: string;
-  /** Bearer token identifying this workload to the gateway. */
-  credentials: string;
-  /** Total time per request; for a stream, the wait for each chunk. Defaults to 120000. */
-  timeoutMs?: number;
+import {
+  type ClientOptions,
+  parseJson as parseBytes,
+  type Send,
+  Transport,
+  type TransportErrors,
+} from "@bae6/sdk-core";
+
+/**
+ * `credentials` identifies this workload to the gateway. `timeoutMs` is per attempt; for a
+ * stream, the wait for each chunk. Defaults to 120000.
+ */
+export interface AiOptions extends ClientOptions {
   /** The agent-worker's address; needed only for the agent run methods. */
   agentRunsUrl?: string;
   /** The eval-worker's address; needed only for the eval run methods. */
@@ -446,18 +453,26 @@ function narrow(
 }
 
 export class Ai {
-  readonly #baseUrl: string;
-  readonly #credentials: string;
+  readonly #gateway: Transport;
+  readonly #workers: Record<WorkerUrl, Transport | undefined>;
   readonly #timeoutMs: number;
-  readonly #workerUrls: Record<WorkerUrl, string | undefined>;
 
-  constructor(options: AiOptions) {
-    this.#workerUrls = {
-      agentRunsUrl: options.agentRunsUrl?.replace(/\/+$/, ""),
-      evalRunsUrl: options.evalRunsUrl?.replace(/\/+$/, ""),
+  constructor({ agentRunsUrl, evalRunsUrl, ...options }: AiOptions) {
+    const errors: TransportErrors = {
+      timeout: (ms) =>
+        new AiTimeoutError(`the gateway did not answer within ${ms} ms`),
+      unreachable: (name) =>
+        new AiTransportError(`could not reach the gateway (${name})`),
+      tooLarge: () => new AiTransportError("the gateway response is too large"),
+      api: (status, body) => httpError(status, parseBytes(body)),
     };
-    this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.#credentials = options.credentials;
+    const make = (baseUrl: string) =>
+      new Transport({ ...options, baseUrl }, { timeoutMs: 120_000, errors });
+    this.#gateway = make(options.baseUrl);
+    this.#workers = {
+      agentRunsUrl: agentRunsUrl === undefined ? undefined : make(agentRunsUrl),
+      evalRunsUrl: evalRunsUrl === undefined ? undefined : make(evalRunsUrl),
+    };
     this.#timeoutMs = options.timeoutMs ?? 120_000;
   }
 
@@ -498,11 +513,13 @@ export class Ai {
       : idle.signal;
     let res: Response;
     try {
-      res = await this.#fetch(
+      res = await this.#gateway.stream(
         "POST",
         "/v1/chat/completions",
-        { ...options, signal },
-        { ...request, stream: true, stream_options: { include_usage: true } },
+        this.#args(
+          { ...options, signal },
+          { ...request, stream: true, stream_options: { include_usage: true } },
+        ),
       );
       if (res.status !== 200 || !res.body) {
         throw httpError(res.status, parseJson(await this.#text(res)));
@@ -900,59 +917,31 @@ export class Ai {
     worker?: WorkerUrl,
     emptyOk = false,
   ) {
-    const base = worker ? this.#workerUrls[worker] : this.#baseUrl;
-    if (base === undefined) throw new AiError(`${worker} is not configured`);
-    const res = await this.#fetch(method, path, options, payload, base);
-    const text = await this.#text(res);
+    const http = worker ? this.#workers[worker] : this.#gateway;
+    if (http === undefined) throw new AiError(`${worker} is not configured`);
+    const res = await http.raw(method, path, this.#args(options, payload));
     if (emptyOk && res.status === 204) return {};
-    const parsed = parseJson(text);
-    if (res.status !== 200 && !(worker && res.status === 202)) {
-      throw httpError(res.status, parsed);
-    }
+    const parsed = parseBytes(res.body);
     if (!isObject(parsed)) throw invalidResponse();
     return parsed;
   }
 
-  async #fetch(
-    method: string,
-    path: string,
-    options: CallOptions,
-    payload?: unknown,
-    base: string = this.#baseUrl,
-  ) {
-    const streaming = isObject(payload) && payload.stream === true;
-    const signals = [
-      options.signal,
-      streaming ? undefined : AbortSignal.timeout(this.#timeoutMs),
-    ];
-    try {
-      return await fetch(base + path, {
-        method,
-        // Credentials must not follow a redirect to another host.
-        redirect: "manual",
-        signal: AbortSignal.any(
-          signals.filter((s): s is AbortSignal => s !== undefined),
-        ),
-        headers: {
-          authorization: `Bearer ${this.#credentials}`,
-          ...(options.endUserToken
-            ? { "bae6-end-user-token": options.endUserToken }
-            : {}),
-          ...(options.idempotencyKey
-            ? { "idempotency-key": options.idempotencyKey }
-            : {}),
-          ...(options.taskType ? { "bae6-task-type": options.taskType } : {}),
-          ...(options.domain ? { "bae6-domain": options.domain } : {}),
-          ...(options.runId ? { "bae6-run-id": options.runId } : {}),
-          ...(payload === undefined
-            ? {}
-            : { "content-type": "application/json" }),
-        },
-        ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
-      });
-    } catch (cause) {
-      throw this.#transport(cause);
-    }
+  #args(options: CallOptions, payload?: unknown): Send {
+    return {
+      ...(payload === undefined ? {} : { body: payload }),
+      ...(options.idempotencyKey
+        ? { idempotencyKey: options.idempotencyKey }
+        : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+      headers: {
+        ...(options.endUserToken
+          ? { "bae6-end-user-token": options.endUserToken }
+          : {}),
+        ...(options.taskType ? { "bae6-task-type": options.taskType } : {}),
+        ...(options.domain ? { "bae6-domain": options.domain } : {}),
+        ...(options.runId ? { "bae6-run-id": options.runId } : {}),
+      },
+    };
   }
 
   async #text(res: Response): Promise<string> {

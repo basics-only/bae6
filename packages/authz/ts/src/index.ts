@@ -1,10 +1,8 @@
-export interface AuthzOptions {
-  baseUrl: string;
-  /** Bearer token identifying this workload to authz. */
-  credentials: string;
+import { type ClientOptions, parseJson, Transport } from "@bae6/sdk-core";
+
+/** `credentials` identifies this workload to authz. `timeoutMs` defaults to 5000. */
+export interface AuthzOptions extends ClientOptions {
   application: string;
-  /** Total time allowed per request. Defaults to 5000. */
-  timeoutMs?: number;
 }
 
 export interface Check {
@@ -98,15 +96,8 @@ const isObject = (v: unknown): v is Json =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-function httpError(status: number, parsed: unknown): AuthzApiError {
+function httpError(status: number, bytes: Uint8Array): AuthzApiError {
+  const parsed = parseJson(bytes);
   const body = isObject(parsed) ? parsed : {};
   const Err =
     status === 400
@@ -139,16 +130,23 @@ function itemDecision(status: string | undefined): ItemDecision {
 }
 
 export class Authz {
-  readonly #baseUrl: string;
-  readonly #credentials: string;
+  readonly #http: Transport;
   readonly #application: string;
-  readonly #timeoutMs: number;
 
-  constructor(options: AuthzOptions) {
-    this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.#credentials = options.credentials;
-    this.#application = options.application;
-    this.#timeoutMs = options.timeoutMs ?? 5000;
+  constructor({ application, ...options }: AuthzOptions) {
+    this.#application = application;
+    this.#http = new Transport(options, {
+      timeoutMs: 5000,
+      errors: {
+        timeout: (ms) =>
+          new AuthzTimeoutError(`authz did not answer within ${ms} ms`),
+        unreachable: (name) =>
+          new AuthzTransportError(`could not reach authz (${name})`),
+        tooLarge: () =>
+          new AuthzTransportError("the authz response is too large"),
+        api: httpError,
+      },
+    });
   }
 
   /**
@@ -267,38 +265,10 @@ export class Authz {
     endUserToken: string,
     payload: Json,
   ): Promise<Json> {
-    let status: number;
-    let text: string;
-    try {
-      const res = await fetch(this.#baseUrl + path, {
-        method: "POST",
-        // The end-user token must not follow a redirect to another host.
-        redirect: "manual",
-        signal: AbortSignal.timeout(this.#timeoutMs),
-        headers: {
-          authorization: `Bearer ${this.#credentials}`,
-          "bae6-end-user-token": endUserToken,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      status = res.status;
-      text = await res.text();
-    } catch (cause) {
-      if (cause instanceof Error && cause.name === "TimeoutError") {
-        throw new AuthzTimeoutError(
-          `authz did not answer within ${this.#timeoutMs} ms`,
-          undefined,
-          { cause },
-        );
-      }
-      // No `cause`: fetch's error can quote a header value, i.e. the end-user token.
-      throw new AuthzTransportError(
-        `could not reach authz (${cause instanceof Error ? cause.name : "error"})`,
-      );
-    }
-    const parsed = parseJson(text);
-    if (status !== 200) throw httpError(status, parsed);
+    const parsed = await this.#http.json("POST", path, {
+      body: payload,
+      headers: { "bae6-end-user-token": endUserToken },
+    });
     if (!isObject(parsed)) throw invalidResponse();
     return parsed;
   }

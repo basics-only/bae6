@@ -1,12 +1,13 @@
-import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, Unpack
 from urllib.parse import quote
 
 import httpx
+from bae6_sdk_core import Credentials, Errors, Options
+from bae6_sdk_core import Transport as CoreTransport
 
 MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 MAX_SSE_LINE = 1024 * 1024
@@ -81,9 +82,7 @@ def _http_error(status: int, parsed: object) -> AiApiError:
 
 
 def _invalid_response() -> AiApiError:
-    return AiApiError(
-        200, "invalid_response", "the gateway returned an unusable response"
-    )
+    return AiApiError(200, "invalid_response", "the gateway returned an unusable response")
 
 
 def _parse(text: bytes) -> object:
@@ -102,26 +101,28 @@ class Ai:
     def __init__(
         self,
         base_url: str,
-        credentials: str,
+        credentials: Credentials,
         timeout: float = 120.0,
         transport: httpx.AsyncBaseTransport | None = None,
         agent_runs_url: str | None = None,
         eval_runs_url: str | None = None,
+        **options: Unpack[Options],
     ) -> None:
-        self._timeout = timeout
-        self._worker_urls = {
-            "agent_runs_url": agent_runs_url.rstrip("/") if agent_runs_url else None,
-            "eval_runs_url": eval_runs_url.rstrip("/") if eval_runs_url else None,
+        def make(url: str) -> CoreTransport:
+            return CoreTransport(
+                url.rstrip("/"),
+                credentials,
+                timeout=timeout,
+                errors=_ERRORS,
+                transport=transport,
+                **options,
+            )
+
+        self._http = make(base_url)
+        self._workers = {
+            "agent_runs_url": make(agent_runs_url) if agent_runs_url else None,
+            "eval_runs_url": make(eval_runs_url) if eval_runs_url else None,
         }
-        self._http = httpx.AsyncClient(
-            base_url=base_url,
-            headers={"authorization": f"Bearer {credentials}"},
-            # Non-streaming deadlines are asyncio.timeout's, so they cover the whole request.
-            timeout=None,
-            # Credentials must not follow a redirect to another host.
-            follow_redirects=False,
-            transport=transport,
-        )
 
     async def __aenter__(self) -> Self:
         return self
@@ -136,6 +137,9 @@ class Ai:
 
     async def aclose(self) -> None:
         await self._http.aclose()
+        for worker in self._workers.values():
+            if worker is not None:
+                await worker.aclose()
 
     async def chat(
         self,
@@ -160,9 +164,7 @@ class Ai:
             payload,
             tags=_tags(task_type, domain, run_id),
         )
-        if not isinstance(body.get("choices"), list) or not isinstance(
-            body.get("usage"), dict
-        ):
+        if not isinstance(body.get("choices"), list) or not isinstance(body.get("usage"), dict):
             raise _invalid_response()
         return body
 
@@ -186,18 +188,12 @@ class Ai:
         payload = _chat_payload(model, messages, max_completion_tokens, temperature)
         payload["stream"] = True
         payload["stream_options"] = {"include_usage": True}
-        request = self._http.build_request(
+        response = await self._http.stream(
             "POST",
             "/v1/chat/completions",
-            json=payload,
+            body=payload,
             headers=_headers(end_user_token, None, _tags(task_type, domain, run_id)),
-            # Bounds connecting, the wait for the answer, and each gap between chunks.
-            timeout=httpx.Timeout(self._timeout),
         )
-        try:
-            response = await self._http.send(request, stream=True)
-        except httpx.HTTPError as e:
-            raise _transport(e) from None
         try:
             if response.status_code != 200:
                 raise _http_error(response.status_code, _parse(await _read(response)))
@@ -242,9 +238,7 @@ class Ai:
             raise _invalid_response()
         return body
 
-    async def models(
-        self, *, end_user_token: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def models(self, *, end_user_token: str | None = None) -> list[dict[str, Any]]:
         body = await self._call("GET", "/v1/models", end_user_token, None, None)
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
@@ -261,9 +255,7 @@ class Ai:
 
         Datetimes must be timezone-aware; a naive one has no unambiguous instant.
         """
-        body = await self._call(
-            "GET", "/v1/usage", end_user_token, None, None, _range(start, end)
-        )
+        body = await self._call("GET", "/v1/usage", end_user_token, None, None, _range(start, end))
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
         return body["data"]
@@ -271,9 +263,7 @@ class Ai:
     async def budget(self, *, end_user_token: str | None = None) -> dict[str, Any]:
         """Money values are decimal strings in the price book's currency."""
         body = await self._call("GET", "/v1/budgets", end_user_token, None, None)
-        if not isinstance(body.get("limit"), str) or not isinstance(
-            body.get("spent"), str
-        ):
+        if not isinstance(body.get("limit"), str) or not isinstance(body.get("spent"), str):
             raise _invalid_response()
         return body
 
@@ -323,9 +313,7 @@ class Ai:
             params["limit"] = str(limit)
         if cursor is not None:
             params["cursor"] = cursor
-        body = await self._call(
-            "GET", "/v1/feedback", end_user_token, None, None, params
-        )
+        body = await self._call("GET", "/v1/feedback", end_user_token, None, None, params)
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
         return body
@@ -426,7 +414,7 @@ class Ai:
             end_user_token,
             None,
             None,
-            [*params.items(), *(("runId", r) for r in run_ids or [])],
+            httpx.QueryParams([*params.items(), *(("runId", r) for r in run_ids or [])]),
         )
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
@@ -538,9 +526,7 @@ class Ai:
         ):
             if value is not None:
                 params[key] = value
-        body = await self._call(
-            "GET", "/v1/usage/series", end_user_token, None, None, params
-        )
+        body = await self._call("GET", "/v1/usage/series", end_user_token, None, None, params)
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
         return body
@@ -593,9 +579,7 @@ class Ai:
         ):
             if value is not None:
                 params[key] = value
-        body = await self._call(
-            "GET", "/v1/usage/distribution", end_user_token, None, None, params
-        )
+        body = await self._call("GET", "/v1/usage/distribution", end_user_token, None, None, params)
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
         return body
@@ -628,14 +612,10 @@ class Ai:
             raise _invalid_response()
         return body
 
-    async def list_task_types(
-        self, *, end_user_token: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def list_task_types(self, *, end_user_token: str | None = None) -> list[dict[str, Any]]:
         return await self._list_tags("task-types", end_user_token)
 
-    async def list_domains(
-        self, *, end_user_token: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def list_domains(self, *, end_user_token: str | None = None) -> list[dict[str, Any]]:
         return await self._list_tags("domains", end_user_token)
 
     async def put_task_type(
@@ -649,9 +629,7 @@ class Ai:
     ) -> dict[str, Any]:
         return await self._put_tag("domains", id, name, end_user_token)
 
-    async def delete_task_type(
-        self, id: str, *, end_user_token: str | None = None
-    ) -> None:
+    async def delete_task_type(self, id: str, *, end_user_token: str | None = None) -> None:
         """Past usage keeps the id; new calls tagged with it are refused."""
         await self._call(
             "DELETE",
@@ -662,9 +640,7 @@ class Ai:
             empty=True,
         )
 
-    async def delete_domain(
-        self, id: str, *, end_user_token: str | None = None
-    ) -> None:
+    async def delete_domain(self, id: str, *, end_user_token: str | None = None) -> None:
         await self._call(
             "DELETE",
             f"/v1/domains/{quote(id, safe='')}",
@@ -674,9 +650,7 @@ class Ai:
             empty=True,
         )
 
-    async def _list_tags(
-        self, kind: str, end_user_token: str | None
-    ) -> list[dict[str, Any]]:
+    async def _list_tags(self, kind: str, end_user_token: str | None) -> list[dict[str, Any]]:
         body = await self._call("GET", f"/v1/{kind}", end_user_token, None, None)
         if not isinstance(body.get("data"), list):
             raise _invalid_response()
@@ -703,39 +677,25 @@ class Ai:
         end_user_token: str | None,
         idempotency_key: str | None,
         payload: dict[str, Any] | None,
-        params: dict[str, str] | list[tuple[str, str]] | None = None,
+        params: httpx.QueryParams | dict[str, str] | None = None,
         worker: str | None = None,
         tags: dict[str, str] | None = None,
         empty: bool = False,
     ) -> dict[str, Any]:
-        worker_url = self._worker_urls[worker] if worker else None
-        if worker and worker_url is None:
+        http = self._workers[worker] if worker else self._http
+        if http is None:
             raise AiError(f"{worker} is not configured")
-        try:
-            async with asyncio.timeout(self._timeout):
-                request = self._http.build_request(
-                    method,
-                    worker_url + path if worker_url else path,
-                    json=payload,
-                    params=params,
-                    headers=_headers(end_user_token, idempotency_key, tags),
-                )
-                response = await self._http.send(request, stream=True)
-                try:
-                    raw = await _read(response)
-                finally:
-                    await response.aclose()
-        except TimeoutError as e:
-            raise AiTimeoutError(
-                f"the gateway did not answer within {self._timeout} s"
-            ) from e
-        except httpx.HTTPError as e:
-            raise _transport(e) from None
+        response = await http.raw(
+            method,
+            path,
+            body=payload,
+            params=params,
+            headers=_headers(end_user_token, None, tags),
+            idempotency_key=idempotency_key,
+        )
         if empty and response.status_code == 204:
             return {}
-        parsed = _parse(raw)
-        if response.status_code != 200 and not (worker and response.status_code == 202):
-            raise _http_error(response.status_code, parsed)
+        parsed = _parse(response.content)
         if not isinstance(parsed, dict):
             raise _invalid_response()
         return parsed
@@ -755,9 +715,7 @@ def _chat_payload(
     return payload
 
 
-def _tags(
-    task_type: str | None, domain: str | None, run_id: str | None
-) -> dict[str, str]:
+def _tags(task_type: str | None, domain: str | None, run_id: str | None) -> dict[str, str]:
     tags = {"bae6-task-type": task_type, "bae6-domain": domain, "bae6-run-id": run_id}
     return {name: value for name, value in tags.items() if value is not None}
 
@@ -786,12 +744,18 @@ def _headers(
     return headers
 
 
+_ERRORS = Errors(
+    timeout=lambda seconds: AiTimeoutError(f"the gateway did not answer within {seconds} s"),
+    unreachable=lambda name: AiTransportError(f"could not reach the gateway ({name})"),
+    too_large=lambda: AiTransportError("the gateway response is too large"),
+    api=lambda status, content: _http_error(status, _parse(content)),
+)
+
+
 def _transport(e: httpx.HTTPError) -> AiTransportError:
     # Raised `from None`: the cause can quote a header value, i.e. a token.
     if isinstance(e, httpx.TimeoutException):
-        return AiTimeoutError(
-            f"the gateway did not answer in time ({type(e).__name__})"
-        )
+        return AiTimeoutError(f"the gateway did not answer in time ({type(e).__name__})")
     return AiTransportError(f"could not reach the gateway ({type(e).__name__})")
 
 

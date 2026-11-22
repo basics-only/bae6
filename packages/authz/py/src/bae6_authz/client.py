@@ -1,10 +1,11 @@
-import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Literal, Self
+from typing import Literal, Self, Unpack
 
 import httpx
+from bae6_sdk_core import Credentials, Errors, Options, parse_json
+from bae6_sdk_core import Transport as CoreTransport
 
 
 class AuthzError(Exception):
@@ -96,7 +97,8 @@ def _str(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _http_error(status: int, parsed: object) -> AuthzApiError:
+def _http_error(status: int, content: bytes) -> AuthzApiError:
+    parsed = parse_json(content)
     body = parsed if isinstance(parsed, dict) else {}
     error_type = (
         AuthzValidationError
@@ -126,21 +128,34 @@ def _item_decision(status: str | None) -> ItemDecision:
     return ItemDecision(False, "deny")
 
 
+_ERRORS = Errors(
+    timeout=lambda seconds: AuthzTimeoutError(f"authz did not answer within {seconds} s"),
+    unreachable=lambda name: AuthzTransportError(f"could not reach authz ({name})"),
+    too_large=lambda: AuthzTransportError("the authz response is too large"),
+    api=_http_error,
+)
+
+
 class Authz:
     """Async authz client. Use `async with Authz(...) as authz` so connections are closed."""
 
     def __init__(
-        self, base_url: str, credentials: str, application: str, timeout: float = 5.0
+        self,
+        base_url: str,
+        credentials: Credentials,
+        application: str,
+        timeout: float = 5.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+        **options: Unpack[Options],
     ) -> None:
         self._application = application
-        self._timeout = timeout
-        self._http = httpx.AsyncClient(
-            base_url=base_url,
-            headers={"authorization": f"Bearer {credentials}"},
-            # The deadline is asyncio.timeout's, so it covers the whole request.
-            timeout=None,
-            # The end-user token must not follow a redirect to another host.
-            follow_redirects=False,
+        self._http = CoreTransport(
+            base_url,
+            credentials,
+            timeout=timeout,
+            errors=_ERRORS,
+            transport=transport,
+            **options,
         )
 
     async def __aenter__(self) -> Self:
@@ -273,22 +288,9 @@ class Authz:
     async def _post(
         self, path: str, end_user_token: str, payload: dict[str, object]
     ) -> dict[str, object]:
-        try:
-            async with asyncio.timeout(self._timeout):
-                response = await self._http.post(
-                    path, json=payload, headers={"bae6-end-user-token": end_user_token}
-                )
-        except TimeoutError as e:
-            raise AuthzTimeoutError(f"authz did not answer within {self._timeout} s") from e
-        except httpx.HTTPError as e:
-            # No chained cause: it can quote a header value, i.e. the end-user token.
-            raise AuthzTransportError(f"could not reach authz ({type(e).__name__})") from None
-        try:
-            parsed: object = response.json()
-        except ValueError:
-            parsed = None
-        if response.status_code != 200:
-            raise _http_error(response.status_code, parsed)
+        parsed = await self._http.json(
+            "POST", path, body=payload, headers={"bae6-end-user-token": end_user_token}
+        )
         if not isinstance(parsed, dict):
             raise _invalid_response()
         return parsed

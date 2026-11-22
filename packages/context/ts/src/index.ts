@@ -1,10 +1,12 @@
-export interface ContextOptions {
-  baseUrl: string;
-  /** Bearer token identifying this workload. */
-  credentials: string;
-  /** Per attempt. Defaults to 10000; raise it above the source's query timeout. */
-  timeoutMs?: number;
-}
+import {
+  type ClientOptions,
+  parseJson,
+  type Send,
+  Transport as CoreTransport,
+} from "@bae6/sdk-core";
+
+/** `timeoutMs` is per attempt and defaults to 10000; raise it above the source's query timeout. */
+export type ContextOptions = ClientOptions;
 
 export interface CallOptions {
   /** Act for this user; must belong to the workload's organization and application. */
@@ -85,22 +87,10 @@ export class ContextTransportError extends ContextError {}
 
 export class ContextTimeoutError extends ContextTransportError {}
 
-const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
-const MAX_ATTEMPTS = 3;
-const RETRYABLE = new Set([502, 503, 504]);
-
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-
-function parseJson(bytes: Uint8Array): unknown {
-  try {
-    return JSON.parse(Buffer.from(bytes).toString("utf8"));
-  } catch {
-    return undefined;
-  }
-}
 
 function apiError(status: number, bytes: Uint8Array): ContextApiError {
   const body = parseJson(bytes);
@@ -119,118 +109,29 @@ function apiError(status: number, bytes: Uint8Array): ContextApiError {
 const invalid = () =>
   new ContextInvalidResponseError("the service returned an unusable response");
 
-interface Raw {
-  status: number;
-  headers: Headers;
-  body: Uint8Array;
-}
-
-interface Send {
-  body?: unknown;
-  headers?: Record<string, string>;
-  idempotencyKey?: string;
-  signal?: AbortSignal;
-}
-
-export class Transport {
-  readonly #baseUrl: string;
-  readonly #credentials: string;
-  readonly #timeoutMs: number;
-
+export class Transport extends CoreTransport {
   constructor(options: ContextOptions) {
-    this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.#credentials = options.credentials;
-    this.#timeoutMs = options.timeoutMs ?? 10_000;
+    super(options, {
+      timeoutMs: 10_000,
+      errors: {
+        timeout: (ms) =>
+          new ContextTimeoutError(`the service did not answer within ${ms} ms`),
+        unreachable: (name) =>
+          new ContextTransportError(`could not reach the service (${name})`),
+        tooLarge: () =>
+          new ContextTransportError("the service response is too large"),
+        api: apiError,
+      },
+    });
   }
 
   /** The parsed JSON of a 2xx response. */
   async request(method: string, path: string, opts: Send = {}) {
-    const res = await this.raw(method, path, opts);
-    const parsed = parseJson(res.body);
+    const parsed = await this.json(method, path, opts);
     if (parsed === undefined) throw invalid();
     return parsed;
   }
-
-  /** Any 2xx response; retries idempotent requests on 502/503/504, timeouts and dropped connections. */
-  async raw(method: string, path: string, opts: Send = {}): Promise<Raw> {
-    const idempotent = method === "GET" || opts.idempotencyKey !== undefined;
-    for (let attempt = 1; ; attempt++) {
-      const last = !idempotent || attempt === MAX_ATTEMPTS;
-      let res: Raw;
-      try {
-        res = await this.#once(method, path, opts);
-      } catch (err) {
-        if (last || opts.signal?.aborted) throw err;
-        await backoff(attempt);
-        continue;
-      }
-      if (res.status >= 200 && res.status < 300) return res;
-      const err = apiError(res.status, res.body);
-      if (
-        last ||
-        !RETRYABLE.has(res.status) ||
-        (err.retryAfterSeconds ?? 0) > 1
-      ) {
-        throw err;
-      }
-      await backoff(attempt);
-    }
-  }
-
-  async #once(method: string, path: string, opts: Send): Promise<Raw> {
-    const timeout = AbortSignal.timeout(this.#timeoutMs);
-    const signal = opts.signal
-      ? AbortSignal.any([opts.signal, timeout])
-      : timeout;
-    try {
-      const res = await fetch(this.#baseUrl + path, {
-        method,
-        // Credentials must not follow a redirect to another host.
-        redirect: "manual",
-        signal,
-        headers: {
-          authorization: `Bearer ${this.#credentials}`,
-          ...(opts.idempotencyKey
-            ? { "idempotency-key": opts.idempotencyKey }
-            : {}),
-          ...(opts.body === undefined
-            ? {}
-            : { "content-type": "application/json" }),
-          ...opts.headers,
-        },
-        ...(opts.body === undefined ? {} : { body: JSON.stringify(opts.body) }),
-      });
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      for await (const chunk of res.body ?? []) {
-        size += chunk.byteLength;
-        if (size > MAX_RESPONSE_BYTES) {
-          throw new ContextTransportError("the service response is too large");
-        }
-        chunks.push(chunk);
-      }
-      return {
-        status: res.status,
-        headers: res.headers,
-        body: Buffer.concat(chunks),
-      };
-    } catch (cause) {
-      if (cause instanceof ContextError) throw cause;
-      if (timeout.aborted) {
-        throw new ContextTimeoutError(
-          `the service did not answer within ${this.#timeoutMs} ms`,
-        );
-      }
-      // No `cause`: fetch's error can quote a header value, i.e. a token.
-      throw new ContextTransportError(
-        `could not reach the service (${cause instanceof Error ? cause.name : "error"})`,
-      );
-    }
-  }
 }
-
-const backoff = (attempt: number) =>
-  new Promise((ok) => setTimeout(ok, Math.random() * 40 * attempt));
 
 const enc = encodeURIComponent;
 

@@ -8,6 +8,7 @@ members = [
     "bae6-ai",
     "bae6-authz",
     "bae6-context",
+    "bae6-sdk-core",
     "bae6-workspace",
 ]
 
@@ -64,6 +65,7 @@ name = "bae6-ai"
 version = "0.0.0"
 source = { editable = "packages/ai/py" }
 dependencies = [
+    { name = "bae6-sdk-core" },
     { name = "httpx" },
 ]
 
@@ -74,7 +76,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
+requires-dist = [
+    { name = "bae6-sdk-core", editable = "packages/core/py" },
+    { name = "httpx", specifier = ">=0.28.1" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -87,16 +92,47 @@ name = "bae6-authz"
 version = "0.0.0"
 source = { editable = "packages/authz/py" }
 dependencies = [
+    { name = "bae6-sdk-core" },
     { name = "httpx" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
+requires-dist = [
+    { name = "bae6-sdk-core", editable = "packages/core/py" },
+    { name = "httpx", specifier = ">=0.28.1" },
+]
 
 [[package]]
 name = "bae6-context"
 version = "0.0.0"
 source = { editable = "packages/context/py" }
+dependencies = [
+    { name = "bae6-sdk-core" },
+    { name = "httpx" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bae6-sdk-core", editable = "packages/core/py" },
+    { name = "httpx", specifier = ">=0.28.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.4" },
+    { name = "ruff", specifier = ">=0.13" },
+]
+
+[[package]]
+name = "bae6-sdk-core"
+version = "0.0.0"
+source = { editable = "packages/core/py" }
 dependencies = [
     { name = "httpx" },
 ]
@@ -126,6 +162,7 @@ dev = [
     { name = "bae6-ai" },
     { name = "bae6-authz" },
     { name = "bae6-context" },
+    { name = "bae6-sdk-core" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -138,6 +175,7 @@ dev = [
     { name = "bae6-ai", editable = "packages/ai/py" },
     { name = "bae6-authz", editable = "packages/authz/py" },
     { name = "bae6-context", editable = "packages/context/py" },
+    { name = "bae6-sdk-core", editable = "packages/core/py" },
     { name = "mypy", specifier = "==1.18.2" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "ruff", specifier = "==0.14.1" },
