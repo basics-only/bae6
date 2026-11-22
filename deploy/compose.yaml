@@ -127,11 +127,13 @@ services:
     build:
       context: ..
       dockerfile: deploy/dev/mock-oidc/Dockerfile
-    profiles: [ai, context, all]
+    profiles: [ai, context, console, all]
     environment:
       NODE_ENV: development
       MOCK_OIDC_ISSUER: http://mock-oidc:8080
       MOCK_OIDC_CLIENT_AUDIENCE: bae6-context-mcp
+      MOCK_OIDC_PUBLIC_URL: http://localhost:8085
+      MOCK_OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8091/auth/callback}
     ports:
       - "127.0.0.1:8085:8080"
 
@@ -369,8 +371,8 @@ services:
     profiles: [console]
     environment:
       ORIGIN: ${CONSOLE_ORIGIN:-http://localhost:8091}
-      OIDC_ISSUER: ${OIDC_ISSUER:-}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-bae6-console}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8091/auth/callback}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
@@ -381,6 +383,8 @@ services:
       BAE6_MCP_REGISTRY_URL: http://mcp-registry:8080
     ports:
       - "127.0.0.1:8091:8080"
+    depends_on:
+      mock-oidc: {condition: service_started}
 
 volumes:
   pgdata:

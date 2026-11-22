@@ -1,5 +1,6 @@
 // Development-only OIDC issuer: serves a JWKS and mints tokens on request.
 // Anyone who can reach it can mint any identity, so it refuses production and must never be exposed.
+import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
@@ -46,11 +47,99 @@ function clientCredentials(raw) {
   };
 }
 
+const sign = (claims, sub, aud, ttlSeconds) =>
+  new SignJWT(claims)
+    .setProtectedHeader({ alg: "RS256", kid: "mock-1" })
+    .setIssuer(issuer)
+    .setSubject(sub)
+    .setAudience(aud)
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds)
+    .sign(privateKey);
+
+// Browser login: only on when MOCK_OIDC_PUBLIC_URL (how the browser reaches this server) is set. It signs in
+// MOCK_OIDC_LOGIN_SUBJECT without asking, so it is for local development only.
+const publicUrl = process.env.MOCK_OIDC_PUBLIC_URL;
+const loginSubject = process.env.MOCK_OIDC_LOGIN_SUBJECT ?? "dev-operator";
+const loginRedirect = process.env.MOCK_OIDC_REDIRECT_URI;
+const codes = new Map();
+const MAX_CODES = 100;
+
+function authorize(url, send, res) {
+  const q = url.searchParams;
+  if (
+    q.get("response_type") !== "code" ||
+    q.get("code_challenge_method") !== "S256" ||
+    q.get("redirect_uri") !== loginRedirect ||
+    !q.get("client_id") ||
+    !q.get("code_challenge")
+  )
+    return send(400, { code: "invalid_request", requestId: "mock" });
+  const now = Date.now();
+  for (const [k, v] of codes) if (v.expires < now) codes.delete(k);
+  if (codes.size >= MAX_CODES)
+    return send(429, { code: "rate_limited", requestId: "mock" });
+  const code = randomBytes(24).toString("base64url");
+  codes.set(code, {
+    clientId: q.get("client_id"),
+    challenge: q.get("code_challenge"),
+    nonce: q.get("nonce"),
+    audience: q.get("audience") ?? q.get("client_id"),
+    expires: now + 60_000,
+  });
+  const back = new URL(loginRedirect);
+  back.searchParams.set("code", code);
+  back.searchParams.set("state", q.get("state") ?? "");
+  res.writeHead(302, { location: back.toString() });
+  res.end();
+}
+
+async function exchange(form, send) {
+  const entry = codes.get(form.get("code") ?? "");
+  codes.delete(form.get("code") ?? "");
+  const verifier = form.get("code_verifier") ?? "";
+  if (
+    !entry ||
+    entry.expires < Date.now() ||
+    entry.clientId !== form.get("client_id") ||
+    form.get("redirect_uri") !== loginRedirect ||
+    createHash("sha256").update(verifier).digest("base64url") !==
+      entry.challenge
+  )
+    return send(400, { error: "invalid_grant" });
+  send(200, {
+    token_type: "Bearer",
+    access_token: await sign(
+      { scope: process.env.MOCK_OIDC_LOGIN_SCOPE ?? "" },
+      loginSubject,
+      entry.audience,
+      300,
+    ),
+    id_token: await sign(
+      { nonce: entry.nonce },
+      loginSubject,
+      entry.clientId,
+      300,
+    ),
+  });
+}
+
 createServer(async (req, res) => {
   const send = (status, value) => {
     res.writeHead(status, { "content-type": "application/json" });
     res.end(typeof value === "string" ? value : JSON.stringify(value));
   };
+  const url = new URL(req.url, "http://mock");
+  if (publicUrl && req.method === "GET") {
+    if (url.pathname === "/.well-known/openid-configuration")
+      return send(200, {
+        issuer,
+        authorization_endpoint: `${publicUrl}/authorize`,
+        token_endpoint: `${issuer}/token`,
+        jwks_uri: `${issuer}/.well-known/jwks.json`,
+      });
+    if (url.pathname === "/authorize") return authorize(url, send, res);
+  }
   if (req.method === "GET" && req.url === "/.well-known/jwks.json")
     return send(200, jwks);
   if (req.method === "GET" && req.url === "/health/live")
@@ -64,6 +153,12 @@ createServer(async (req, res) => {
   try {
     const raw = await body(req);
     const form = raw !== "" && !raw.trimStart().startsWith("{");
+    if (
+      publicUrl &&
+      form &&
+      new URLSearchParams(raw).get("grant_type") === "authorization_code"
+    )
+      return await exchange(new URLSearchParams(raw), send);
     const {
       sub,
       aud,
@@ -84,14 +179,12 @@ createServer(async (req, res) => {
         requestId: "mock",
       });
     }
-    const token = await new SignJWT({ ...claims, ...(scope ? { scope } : {}) })
-      .setProtectedHeader({ alg: "RS256", kid: "mock-1" })
-      .setIssuer(issuer)
-      .setSubject(sub)
-      .setAudience(aud)
-      .setIssuedAt()
-      .setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds)
-      .sign(privateKey);
+    const token = await sign(
+      { ...claims, ...(scope ? { scope } : {}) },
+      sub,
+      aud,
+      ttlSeconds,
+    );
     send(200, {
       access_token: token,
       token_type: "Bearer",

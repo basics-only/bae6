@@ -1,6 +1,6 @@
 # 0010 — Operator console
 
-Status: proposed
+Status: accepted
 Date: 2026-11-19
 
 ## Context
