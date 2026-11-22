@@ -4,7 +4,10 @@ const requestTimeoutMs = 10_000;
 const oidc = "http://127.0.0.1:8085";
 
 async function token(sub, aud, scope) {
-  const res = await fetch(`${oidc}/token`, { method: "POST", body: JSON.stringify({ sub, aud, scope, ttlSeconds: 3600 }) });
+  const res = await fetch(`${oidc}/token`, {
+    method: "POST",
+    body: JSON.stringify({ sub, aud, scope, ttlSeconds: 3600 }),
+  });
   if (!res.ok) throw new Error(`token ${aud}: ${res.status}`);
   return (await res.json()).access_token;
 }
@@ -21,24 +24,35 @@ const scenarios = {
     fetch("http://127.0.0.1:8081/v1/chat/completions", {
       method: "POST",
       headers: { authorization: `Bearer ${ai}`, ...json },
-      body: JSON.stringify({ model: "chat-mock", messages: [{ role: "user", content: "hello" }] }),
+      body: JSON.stringify({
+        model: "chat-mock",
+        messages: [{ role: "user", content: "hello" }],
+      }),
       signal: signal(),
     }),
   search: () =>
     fetch("http://127.0.0.1:8083/v1/collections/kb/search", {
       method: "POST",
-      headers: { authorization: `Bearer ${embed}`, "bae6-end-user-token": endUser, ...json },
+      headers: {
+        authorization: `Bearer ${embed}`,
+        "bae6-end-user-token": endUser,
+        ...json,
+      },
       body: JSON.stringify({ query: "expense reimbursement", limit: 5 }),
       signal: signal(),
     }),
   read: () =>
-    fetch("http://127.0.0.1:8082/v1/sources/docs/objects/content?key=example/handbook.txt", {
-      headers: { authorization: `Bearer ${data}` },
-      signal: signal(),
-    }),
+    fetch(
+      "http://127.0.0.1:8082/v1/sources/docs/objects/content?key=example/handbook.txt",
+      {
+        headers: { authorization: `Bearer ${data}` },
+        signal: signal(),
+      },
+    ),
 };
 
-const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? null;
+const pct = (sorted, p) =>
+  sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? null;
 
 async function once(run) {
   const start = performance.now();

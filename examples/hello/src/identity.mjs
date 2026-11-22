@@ -24,26 +24,38 @@ const INVALID = new Set([
  * @returns {(authorization: string|undefined) => Promise<object|null>} null = invalid; throws = undeterminable.
  */
 export function createVerifier(issuers, opts = {}) {
-  if (!Array.isArray(issuers) || issuers.length === 0) throw new Error("at least one issuer is required");
+  if (!Array.isArray(issuers) || issuers.length === 0)
+    throw new Error("at least one issuer is required");
   const byIssuer = new Map();
   for (const i of issuers) {
     if (!SLUG.test(i.organization ?? "") || !SLUG.test(i.application ?? "")) {
-      throw new Error(`issuer ${i.issuer}: organization and application must be slugs`);
+      throw new Error(
+        `issuer ${i.issuer}: organization and application must be slugs`,
+      );
     }
     const jwks = new URL(i.jwksUri);
-    if (jwks.protocol !== "https:" && !(jwks.protocol === "http:" && opts.allowHttpJwks)) {
+    if (
+      jwks.protocol !== "https:" &&
+      !(jwks.protocol === "http:" && opts.allowHttpJwks)
+    ) {
       throw new Error(`issuer ${i.issuer}: jwksUri must be https`);
     }
     if (byIssuer.has(i.issuer)) throw new Error(`duplicate issuer ${i.issuer}`);
     byIssuer.set(i.issuer, {
       ...i,
       // Cached; refetched on unknown kid at most every 30 s; each fetch bounded.
-      keys: createRemoteJWKSet(jwks, { cooldownDuration: 30_000, cacheMaxAge: 600_000, timeoutDuration: 5_000 }),
+      keys: createRemoteJWKSet(jwks, {
+        cooldownDuration: 30_000,
+        cacheMaxAge: 600_000,
+        timeoutDuration: 5_000,
+      }),
     });
   }
 
   return async (authorization) => {
-    const token = /^Bearer ([A-Za-z0-9._~+/-]+=*)$/.exec(authorization ?? "")?.[1];
+    const token = /^Bearer ([A-Za-z0-9._~+/-]+=*)$/.exec(
+      authorization ?? "",
+    )?.[1];
     if (!token || token.length > 8192) return null;
     let iss;
     try {
@@ -66,15 +78,28 @@ export function createVerifier(issuers, opts = {}) {
       if (INVALID.has(err?.code)) return null;
       throw err;
     }
-    if (typeof payload.sub !== "string" || payload.sub === "" || payload.sub.length > 256) return null;
+    if (
+      typeof payload.sub !== "string" ||
+      payload.sub === "" ||
+      payload.sub.length > 256
+    )
+      return null;
     // jose checks iat only with maxTokenAge; the style guide also rejects a future iat.
-    if (typeof payload.iat === "number" && payload.iat > Date.now() / 1000 + 60) return null;
-    const scopes = typeof payload.scope === "string" ? payload.scope.split(" ").filter(Boolean)
-      : Array.isArray(payload.scp) ? payload.scp.filter((s) => typeof s === "string") : [];
+    if (typeof payload.iat === "number" && payload.iat > Date.now() / 1000 + 60)
+      return null;
+    const scopes =
+      typeof payload.scope === "string"
+        ? payload.scope.split(" ").filter(Boolean)
+        : Array.isArray(payload.scp)
+          ? payload.scp.filter((s) => typeof s === "string")
+          : [];
     return {
       subjectId: payload.sub,
       // Client-credentials tokens name the client as their own subject.
-      subjectType: payload.sub === (payload.client_id ?? payload.azp) ? "workload" : "user",
+      subjectType:
+        payload.sub === (payload.client_id ?? payload.azp)
+          ? "workload"
+          : "user",
       organizationId: cfg.organization,
       applicationId: cfg.application,
       issuer: cfg.issuer,

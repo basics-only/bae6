@@ -13,9 +13,20 @@
         "tag": { "type": "string" },
         "pullPolicy": { "enum": ["IfNotPresent", "Always", "Never"] }
       },
-      "if": { "properties": { "allowTag": { "const": true } }, "required": ["allowTag"] },
-      "then": { "properties": { "tag": { "type": "string", "minLength": 1 } }, "required": ["tag"] },
-      "else": { "properties": { "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }, "required": ["digest"] }
+      "if": {
+        "properties": { "allowTag": { "const": true } },
+        "required": ["allowTag"]
+      },
+      "then": {
+        "properties": { "tag": { "type": "string", "minLength": 1 } },
+        "required": ["tag"]
+      },
+      "else": {
+        "properties": {
+          "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        },
+        "required": ["digest"]
+      }
     },
     "containerPort": { "type": "integer", "minimum": 1024, "maximum": 65535 },
     "replicas": { "type": "integer", "minimum": 1 },
@@ -31,7 +42,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "roleArn": { "type": "string", "pattern": "^$|^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$" },
+        "roleArn": {
+          "type": "string",
+          "pattern": "^$|^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$"
+        },
         "audience": { "type": "string", "minLength": 1 }
       }
     },
@@ -42,7 +56,11 @@
         "type": "object",
         "required": ["name", "secret", "key"],
         "additionalProperties": false,
-        "properties": { "name": { "type": "string" }, "secret": { "type": "string" }, "key": { "type": "string" } }
+        "properties": {
+          "name": { "type": "string" },
+          "secret": { "type": "string" },
+          "key": { "type": "string" }
+        }
       }
     },
     "resources": {

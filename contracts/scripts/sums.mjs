@@ -11,8 +11,12 @@ export function sums() {
       .map((e) => `${e.parentPath}/${e.name}`),
   )
     .sort()
-    .map((p) => `${createHash("sha256").update(readFileSync(p)).digest("hex")}  ${p}\n`)
+    .map(
+      (p) =>
+        `${createHash("sha256").update(readFileSync(p)).digest("hex")}  ${p}\n`,
+    )
     .join("");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.stdout.write(sums());
+if (import.meta.url === `file://${process.argv[1]}`)
+  process.stdout.write(sums());
