@@ -9,14 +9,14 @@
     "test": "tsx --test src/*.test.ts"
   },
   "devDependencies": {
-    "@types/node": "22.18.10",
-    "ajv": "8.20.0",
-    "tsx": "4.20.6",
-    "typescript": "5.9.3",
-    "yaml": "2.9.1"
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
   },
   "dependencies": {
-    "@openfga/sdk": "0.9.7",
-    "@openfga/syntax-transformer": "0.2.2"
+    "@openfga/sdk": "catalog:",
+    "@openfga/syntax-transformer": "catalog:"
   }
 }

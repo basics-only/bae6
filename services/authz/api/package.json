@@ -14,14 +14,14 @@
     "test:replicas": "tsx --test ../../tests/load/equivalence.test.ts"
   },
   "devDependencies": {
-    "@types/node": "22.18.10",
-    "@types/pg": "8.23.1",
-    "tsx": "4.20.6",
-    "typescript": "5.9.3"
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
-    "@openfga/sdk": "0.9.7",
-    "@openfga/syntax-transformer": "0.2.2",
+    "@openfga/sdk": "catalog:",
+    "@openfga/syntax-transformer": "catalog:",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/context-async-hooks": "2.12.0",
     "@opentelemetry/core": "2.12.0",
@@ -30,7 +30,7 @@
     "@opentelemetry/resources": "2.12.0",
     "@opentelemetry/sdk-metrics": "2.12.0",
     "@opentelemetry/sdk-trace": "2.12.0",
-    "jose": "6.2.14",
-    "pg": "8.23.1"
+    "jose": "catalog:",
+    "pg": "catalog:"
   }
 }

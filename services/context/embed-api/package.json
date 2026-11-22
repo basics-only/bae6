@@ -14,15 +14,15 @@
     "@bae6/context-data-s3": "workspace:*",
     "@bae6/context-embed": "workspace:*",
     "@bae6/context-embed-pgvector": "workspace:*",
-    "jose": "6.2.14",
-    "pg": "8.23.1"
+    "jose": "catalog:",
+    "pg": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "22.18.10",
-    "@types/pg": "8.23.1",
-    "ajv": "8.20.0",
-    "tsx": "4.20.6",
-    "typescript": "5.9.3",
-    "yaml": "2.9.1"
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
   }
 }

@@ -11,13 +11,13 @@
   },
   "dependencies": {
     "@bae6/context-mcp": "workspace:*",
-    "jose": "6.2.14"
+    "jose": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "22.18.10",
-    "ajv": "8.20.0",
-    "tsx": "4.20.6",
-    "typescript": "5.9.3",
-    "yaml": "2.9.1"
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
   }
 }

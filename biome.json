@@ -5,10 +5,14 @@
     "includes": [
       "**",
       "!**/dist",
+      "!**/.svelte-kit",
       "!**/node_modules",
       "!**/.venv",
+      "!**/*.svelte",
       "!pnpm-lock.yaml",
-      "!contracts/vendor"
+      "!_legacy",
+      "!contracts/fixtures",
+      "!contracts/schemas"
     ]
   },
   "formatter": { "indentStyle": "space" },
