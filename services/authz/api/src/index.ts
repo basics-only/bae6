@@ -20,6 +20,7 @@ import {
 } from "./auth/index.js";
 import { workloadRoutes } from "./auth/workloadRoutes.js";
 import { createBindingStore } from "./auth/workloads.js";
+import { ttlCached } from "./cache.js";
 import { createResolver, dbLookup } from "./checks/resolver.js";
 import { checkRoutes } from "./checks/routes.js";
 import { createCheckService } from "./checks/service.js";
@@ -47,10 +48,19 @@ const pool = new pg.Pool({
 // An idle-client error (e.g. Postgres restart) must not crash the process.
 pool.on("error", () => console.error(JSON.stringify({ msg: "pool error" })));
 
+// Bounds how long an unbind or model rebind can lag on the check path; 0 turns the cache off.
+const lookupCacheMs = Number(process.env.BAE6_LOOKUP_CACHE_MS ?? 5000);
+if (!Number.isInteger(lookupCacheMs) || lookupCacheMs < 0) {
+  throw new Error("BAE6_LOOKUP_CACHE_MS must be a non-negative integer");
+}
+
 const bindings = createBindingStore(pool);
 const { authenticate, verifyEndUser } =
   process.env.BAE6_AUTH_MODE === "oidc"
-    ? oidcAuthFromEnv(process.env, bindings.lookup)
+    ? oidcAuthFromEnv(
+        process.env,
+        ttlCached(bindings.lookup, lookupCacheMs, (ids) => ids.length > 0),
+      )
     : {
         authenticate: authenticatorFromEnv(process.env),
         verifyEndUser: endUserVerifierFromEnv(process.env),
@@ -110,7 +120,14 @@ if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 100) {
 }
 const resolver = createResolver(dbLookup(pool), required("OPENFGA_API_URL"));
 const checkService = createCheckService({
-  resolver,
+  resolver: createResolver(
+    ttlCached(
+      dbLookup(pool),
+      lookupCacheMs,
+      (found) => found !== null && found.modelId !== null,
+    ),
+    required("OPENFGA_API_URL"),
+  ),
   timeoutMs: checkTimeoutMs,
 });
 const checks = checkRoutes({
