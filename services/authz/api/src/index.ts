@@ -118,6 +118,15 @@ const maxBatchSize = Number(process.env.BAE6_BATCH_MAX ?? 100);
 if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 100) {
   throw new Error("BAE6_BATCH_MAX must be an integer from 1 to 100");
 }
+// Must equal what OpenFGA runs with, or a capped list looks complete.
+const listObjectsMaxResults = Number(
+  process.env.OPENFGA_LIST_OBJECTS_MAX_RESULTS ?? 1000,
+);
+if (!Number.isInteger(listObjectsMaxResults) || listObjectsMaxResults < 1) {
+  throw new Error(
+    "OPENFGA_LIST_OBJECTS_MAX_RESULTS must be a positive integer",
+  );
+}
 const resolver = createResolver(dbLookup(pool), required("OPENFGA_API_URL"));
 const checkService = createCheckService({
   resolver: createResolver(
@@ -129,6 +138,7 @@ const checkService = createCheckService({
     required("OPENFGA_API_URL"),
   ),
   timeoutMs: checkTimeoutMs,
+  listObjectsMaxResults,
 });
 const checks = checkRoutes({
   maxBatchSize,

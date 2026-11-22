@@ -20,7 +20,7 @@ export type IndeterminateCode =
   | "no_active_model"
   | "result_truncated";
 
-/** OpenFGA's OPENFGA_LIST_OBJECTS_MAX_RESULTS default; keep equal to the deployed value. */
+/** OpenFGA's OPENFGA_LIST_OBJECTS_MAX_RESULTS default; the service reads the deployed value from the same env var. */
 export const LIST_OBJECTS_MAX_RESULTS = 1000;
 
 export interface CheckResult {
@@ -61,8 +61,11 @@ class Timeout extends Error {}
 export function createCheckService(deps: {
   resolver: ReturnType<typeof createResolver>;
   timeoutMs: number;
+  listObjectsMaxResults?: number | undefined;
 }) {
   const { resolver, timeoutMs } = deps;
+  const listObjectsMaxResults =
+    deps.listObjectsMaxResults ?? LIST_OBJECTS_MAX_RESULTS;
 
   /**
    * Runs `call` against the application's pinned client under the timeout.
@@ -227,7 +230,7 @@ export function createCheckService(deps: {
             requestOptions(input.consistency),
           );
           // At the cap OpenFGA may have dropped objects; a partial list must not look complete.
-          if (objects.length >= LIST_OBJECTS_MAX_RESULTS) {
+          if (objects.length >= listObjectsMaxResults) {
             return { objects: [], modelId, code: "result_truncated" };
           }
           const { after } = input;

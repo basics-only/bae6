@@ -76,7 +76,11 @@ function listen(server: Server) {
 async function withApp(
   fn: (ctx: {
     admin: Call;
-    callWith: (openfgaUrl: string, timeoutMs: number) => Promise<Call>;
+    callWith: (
+      openfgaUrl: string,
+      timeoutMs: number,
+      listObjectsMaxResults?: number,
+    ) => Promise<Call>;
     /** Removes alice's read access to document:d1. */
     revokeAlice: () => Promise<void>;
   }) => Promise<void>,
@@ -92,11 +96,16 @@ async function withApp(
   const servers: Server[] = [];
 
   // One API over the real OpenFGA; `callWith` builds another whose checks use a different OpenFGA URL.
-  async function serve(openfgaUrl: string, timeoutMs: number): Promise<Call> {
+  async function serve(
+    openfgaUrl: string,
+    timeoutMs: number,
+    listObjectsMaxResults?: number,
+  ): Promise<Call> {
     const check = checkRoutes({
       service: createCheckService({
         resolver: createResolver(dbLookup(pool), openfgaUrl),
         timeoutMs,
+        listObjectsMaxResults,
       }),
       verifyEndUser: (t) => (t && endUsers[t]) || null,
       maxBatchSize: MAX_BATCH,
@@ -900,6 +909,28 @@ test(
         assert.deepEqual(res.body.objects, []);
         assert.equal(res.body.code, "result_truncated");
         assert.equal("nextCursor" in res.body, false);
+      } finally {
+        upstream.closeAllConnections();
+        upstream.close();
+      }
+    }),
+);
+
+test(
+  "list-objects treats a list at the configured cap as truncated",
+  opts,
+  () =>
+    withApp(async ({ callWith }) => {
+      const upstream = createServer((_, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ objects: ["document:d1", "document:d2"] }));
+      });
+      const port = await listen(upstream);
+      try {
+        const call = await callWith(`http://127.0.0.1:${port}`, 2000, 2);
+        const res = await call("admin", listRead, "alice-token", LIST);
+        assert.deepEqual(res.body.objects, []);
+        assert.equal(res.body.code, "result_truncated");
       } finally {
         upstream.closeAllConnections();
         upstream.close();
