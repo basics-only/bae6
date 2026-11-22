@@ -26,6 +26,17 @@ export interface LoginState {
 
 const random = () => randomBytes(32).toString("base64url");
 
+// One per issuer: jose caches fetched keys inside the set, so a new set per login refetches them.
+const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+function keysFor(jwksUri: string) {
+  let keys = keySets.get(jwksUri);
+  if (!keys) {
+    keys = createRemoteJWKSet(new URL(jwksUri));
+    keySets.set(jwksUri, keys);
+  }
+  return keys;
+}
+
 export async function discover(
   issuer: string,
   fetchImpl: typeof fetch = fetch,
@@ -103,16 +114,12 @@ export async function finishLogin(
     throw new Error("token response is missing tokens");
   }
 
-  const { payload } = await jwtVerify(
-    tokens.id_token,
-    createRemoteJWKSet(new URL(meta.jwks_uri)),
-    {
-      issuer: meta.issuer,
-      audience: config.clientId,
-      algorithms: ["RS256", "ES256"],
-      requiredClaims: ["exp", "sub"],
-    },
-  );
+  const { payload } = await jwtVerify(tokens.id_token, keysFor(meta.jwks_uri), {
+    issuer: meta.issuer,
+    audience: config.clientId,
+    algorithms: ["RS256", "ES256"],
+    requiredClaims: ["exp", "sub"],
+  });
   if (payload.nonce !== saved.nonce) throw new Error("nonce mismatch");
 
   // The session never outlives the ID token, so an expired login is not kept alive.
