@@ -17,7 +17,7 @@ import pytest
 from bae6_authz import Authz
 from bae6_authz.databricks import Databricks
 
-sys.path.insert(0, str(Path(__file__).parents[3] / "examples/databricks"))
+sys.path.insert(0, str(Path(__file__).parents[6] / "examples/authz/databricks"))
 from app import handle  # noqa: E402
 
 TOKEN = {"x-forwarded-access-token": "user-token"}
