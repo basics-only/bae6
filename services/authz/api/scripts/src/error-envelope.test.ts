@@ -23,9 +23,7 @@ function envelope() {
 
 test("authz error bodies conform to the shared bae6 error envelope", () => {
   const valid = envelope();
-  const spec = parse(
-    readFileSync(join(root, "openapi.yaml"), "utf8"),
-  );
+  const spec = parse(readFileSync(join(root, "openapi.yaml"), "utf8"));
   const bodies: unknown[] = Object.values(
     spec.components.responses.Error.content["application/json"].examples,
   ).map((e) => (e as { value: unknown }).value);

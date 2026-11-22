@@ -1,29 +1,16 @@
-# Consuming a contracts release
+# Consuming contracts
 
-Consumers vendor a tagged release; nothing reads `main`.
+Contracts live in `contracts/` and are referenced in place.
 
-```sh
-TAG=v0.1.0
-mkdir -p contracts/vendor
-curl -fsSL "https://github.com/basics-only/bae6-contracts/archive/refs/tags/$TAG.tar.gz" \
-  | tar -xz --strip-components=1 -C contracts/vendor \
-      "bae6-contracts-${TAG#v}/schemas" "bae6-contracts-${TAG#v}/openapi" \
-      "bae6-contracts-${TAG#v}/fixtures/transport" "bae6-contracts-${TAG#v}/SHA256SUMS"
-echo "$TAG" > contracts/vendor/VERSION
-```
+- Service OpenAPI documents `$ref` `../../../contracts/openapi/common.yaml` and
+  `../../../contracts/schemas/*.json` by relative path.
+- SDK and service tests load `contracts/schemas` and `contracts/fixtures/transport` directly.
 
-Commit `contracts/vendor/`. In CI, verify it is an unmodified release:
-
-```sh
-(cd contracts/vendor && shasum -a 256 -c SHA256SUMS)
-```
-
-To upgrade, rerun with the new tag, read the release notes, and fix what the compatibility
-notes list. Product OpenAPI documents reference `contracts/vendor/openapi/common.yaml`.
+A contract change and every consumer it affects land in one PR, so CI verifies them together.
 
 ## Proposing a change
-1. Open a PR here changing the schema, with fixtures for the new behavior, and an ADR if
+1. Change the schema in `contracts/` with fixtures for the new behavior, and an ADR if
    cross-product behavior changes.
-2. CI checks fixtures and runs `oasdiff breaking` against the previous tag. A breaking change
+2. CI runs `oasdiff breaking` against the previous `contracts-v*` tag. A breaking change
    fails unless the PR is for a new major.
-3. After release, consumers upgrade at their own pace within the compatibility window (ADR-0001).
+3. Consumers upgrade within the compatibility window (ADR-0001).

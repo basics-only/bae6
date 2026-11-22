@@ -3,8 +3,8 @@
 Applies to every bae6 HTTP API. Deviations need an ADR.
 
 ## Shape
-- OpenAPI 3.1, one document per runtime, in that product's repo, referencing
-  `openapi/common.yaml` from its vendored copy.
+- OpenAPI 3.1, one document per runtime, next to its service, referencing
+  `contracts/openapi/common.yaml` by relative path.
 - Paths versioned: `/v1/...`. Health at `/health/live` and `/health/ready`, unauthenticated.
 - JSON bodies, camelCase fields, `additionalProperties: false` on request bodies.
 - Every request body, array and string has a documented maximum. A service rejects larger

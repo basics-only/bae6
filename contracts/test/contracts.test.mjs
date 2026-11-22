@@ -3,7 +3,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { sums } from "../scripts/sums.mjs";
 
 const json = (p) => JSON.parse(readFileSync(p, "utf8"));
 const ajv = new Ajv2020({
@@ -51,8 +50,4 @@ test("transport cases match the case schema", () => {
       `${c}: ${JSON.stringify(validate.errors)}`,
     );
   }
-});
-
-test("SHA256SUMS matches the released files (run `pnpm sums` after editing them)", () => {
-  assert.equal(readFileSync("SHA256SUMS", "utf8"), sums());
 });

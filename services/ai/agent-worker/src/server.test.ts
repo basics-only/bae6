@@ -106,7 +106,9 @@ const submit = (token: string | undefined, body: unknown, key?: string) =>
 const task = { task: "say hi", model: "m" };
 
 const contracts = resolve(import.meta.dirname, "../../../../contracts");
-const spec = parse(readFileSync(resolve(import.meta.dirname, "../openapi.yaml"), "utf8"));
+const spec = parse(
+  readFileSync(resolve(import.meta.dirname, "../openapi.yaml"), "utf8"),
+);
 const ajv = new AjvModule.default({ strict: false, validateFormats: false });
 for (const f of readdirSync(join(contracts, "schemas"))) {
   ajv.addSchema(
