@@ -23,7 +23,10 @@ import { createBindingStore } from "./auth/workloads.js";
 import { ttlCached } from "./cache.js";
 import { createResolver, dbLookup } from "./checks/resolver.js";
 import { checkRoutes } from "./checks/routes.js";
-import { createCheckService } from "./checks/service.js";
+import {
+  createCheckService,
+  LIST_OBJECTS_MAX_RESULTS,
+} from "./checks/service.js";
 import { migrate } from "./db/migrate.js";
 import { readiness } from "./health.js";
 import { setupObservability } from "./observability.js";
@@ -120,7 +123,7 @@ if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 100) {
 }
 // Must equal what OpenFGA runs with, or a capped list looks complete.
 const listObjectsMaxResults = Number(
-  process.env.OPENFGA_LIST_OBJECTS_MAX_RESULTS ?? 1000,
+  process.env.OPENFGA_LIST_OBJECTS_MAX_RESULTS ?? LIST_OBJECTS_MAX_RESULTS,
 );
 if (!Number.isInteger(listObjectsMaxResults) || listObjectsMaxResults < 1) {
   throw new Error(
