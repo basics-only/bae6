@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { conformanceProblems } from "./conformance.js";
 
 const root = resolve(import.meta.dirname, "../..");
-const spec = join(root, "contracts/openapi.yaml");
+const spec = join(root, "openapi.yaml");
 
 const allow = { status: "allow", requestId: "req_1" };
 

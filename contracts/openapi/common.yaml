@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Shared components every bae6 product API references. A product OpenAPI document
-    `$ref`s these from its vendored copy (see docs/consuming.md). Paths here are the
+    `$ref`s these by relative path. Paths here are the
     standard health endpoints every runtime exposes.
   license:
     name: Apache-2.0

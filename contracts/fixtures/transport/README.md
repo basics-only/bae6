@@ -1,8 +1,8 @@
 # SDK transport conformance cases
 
-Every bae6 SDK (TypeScript and Python, in each product repo) carries its own small HTTP
+Every bae6 SDK (TypeScript and Python, under `packages/`) carries its own small HTTP
 transport. These cases pin its shared behavior, so all SDKs time out, retry and report
-errors the same way. Product SDKs vendor this folder and run each case with a local HTTP
+errors the same way. Product SDKs read this folder and run each case with a local HTTP
 server that answers `responses` in order.
 
 ## Rules the cases encode

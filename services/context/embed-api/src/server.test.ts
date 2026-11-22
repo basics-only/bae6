@@ -386,22 +386,22 @@ test("a request leaves no document text in the logs", async () => {
   assert.equal(line?.collectionId, "kb");
 });
 
-const contracts = resolve(import.meta.dirname, "../../../contracts");
+const contracts = resolve(import.meta.dirname, "../../../../contracts");
 const spec = parse(
-  readFileSync(join(contracts, "embed-api.yaml"), "utf8")
+  readFileSync(resolve(import.meta.dirname, "../openapi.yaml"), "utf8")
     .replaceAll(
-      "./vendor/schemas/",
+      "../../../contracts/schemas/",
       "https://github.com/basics-only/bae6-contracts/schemas/",
     )
     .replaceAll(
-      "./vendor/openapi/common.yaml#/components/schemas/ErrorEnvelope",
+      "../../../contracts/openapi/common.yaml#/components/schemas/ErrorEnvelope",
       "https://github.com/basics-only/bae6-contracts/schemas/error-envelope.json",
     ),
 );
 const ajv = new AjvModule.default({ strict: false, validateFormats: false });
-for (const f of readdirSync(join(contracts, "vendor/schemas"))) {
+for (const f of readdirSync(join(contracts, "schemas"))) {
   ajv.addSchema(
-    JSON.parse(readFileSync(join(contracts, "vendor/schemas", f), "utf8")),
+    JSON.parse(readFileSync(join(contracts, "schemas", f), "utf8")),
   );
 }
 ajv.addSchema(spec, "openapi");

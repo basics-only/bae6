@@ -71,24 +71,24 @@ const call = (
 const codeOf = async (res: Response) =>
   [res.status, ((await res.json()) as { code: string }).code] as const;
 
-const contracts = resolve(import.meta.dirname, "../../../contracts");
+const contracts = resolve(import.meta.dirname, "../../../../contracts");
 const schemas = "https://github.com/basics-only/bae6-contracts/schemas/";
 const spec = parse(
-  readFileSync(join(contracts, "mcp-registry-api.yaml"), "utf8")
-    .replaceAll("./vendor/schemas/", schemas)
+  readFileSync(resolve(import.meta.dirname, "../openapi.yaml"), "utf8")
+    .replaceAll("../../../contracts/schemas/", schemas)
     .replaceAll(
-      "./vendor/openapi/common.yaml#/components/schemas/ErrorEnvelope",
+      "../../../contracts/openapi/common.yaml#/components/schemas/ErrorEnvelope",
       `${schemas}error-envelope.json`,
     )
     .replaceAll(
-      "./vendor/openapi/common.yaml#/components/schemas/Page",
+      "../../../contracts/openapi/common.yaml#/components/schemas/Page",
       `${schemas}page.json`,
     ),
 );
 const ajv = new AjvModule.default({ strict: false, validateFormats: false });
-for (const f of readdirSync(join(contracts, "vendor/schemas"))) {
+for (const f of readdirSync(join(contracts, "schemas"))) {
   ajv.addSchema(
-    JSON.parse(readFileSync(join(contracts, "vendor/schemas", f), "utf8")),
+    JSON.parse(readFileSync(join(contracts, "schemas", f), "utf8")),
   );
 }
 ajv.addSchema(spec, "openapi");

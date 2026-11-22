@@ -10,8 +10,7 @@
   },
   "scripts": {
     "lint": "redocly lint openapi/common.yaml",
-    "test": "node --test test/*.test.mjs",
-    "sums": "node scripts/sums.mjs > SHA256SUMS"
+    "test": "node --test test/*.test.mjs"
   },
   "devDependencies": {
     "@redocly/cli": "catalog:",
