@@ -1,0 +1,31 @@
+contracts:
+  version: v0.1.0
+runtimes:
+  bae6-authz-api:
+    repo: bae6-authz
+    version: v0.1.0
+    commit: 5148ac3a834bc1c5f2baef1a64499c3292f932f8
+    localImageId: 07d7edb3ec35
+  bae6-ai-gateway:
+    repo: bae6-ai
+    version: v0.1.4
+    commit: d167bdf0bd4da16c5f93ad6019c0c4dfeaacf701
+    localImageId: 28701c7e4f73
+  bae6-context-data-api:
+    repo: bae6-context
+    version: v0.1.4
+    commit: 48b16823303082ff7675685929b4d842a5ee954b
+    localImageId: d72de8bffbbf
+  bae6-context-embed-api:
+    repo: bae6-context
+    version: v0.1.4
+    commit: 48b16823303082ff7675685929b4d842a5ee954b
+    localImageId: c966156225f1
+  bae6-context-mcp-registry:
+    repo: bae6-context
+    version: v0.1.4
+    commit: 48b16823303082ff7675685929b4d842a5ee954b
+    localImageId: 2686629f5806
+chart:
+  name: bae6-service
+  version: 0.1.0
