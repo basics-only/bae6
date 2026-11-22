@@ -9,6 +9,6 @@
     "start": "node server.mjs"
   },
   "dependencies": {
-    "jose": "6.2.14"
+    "jose": "catalog:"
   }
 }

@@ -1,0 +1,28 @@
+packages:
+  - contracts
+  - packages/*/*
+  - packages/ai/integrations/*
+  - services/console
+  - services/ai/*
+  - services/context/*
+  - services/authz/api
+  - services/authz/api/scripts
+  - services/authz/api/tests/*
+  - examples/authz/express
+  - examples/hello
+  - deploy/dev/*
+onlyBuiltDependencies:
+  - esbuild
+catalog:
+  "@biomejs/biome": 2.2.5
+  "@openfga/sdk": 0.9.7
+  "@openfga/syntax-transformer": 0.2.2
+  "@redocly/cli": 2.72.1
+  "@types/node": 22.18.10
+  "@types/pg": 8.23.1
+  ajv: 8.20.0
+  jose: 6.2.14
+  pg: 8.23.1
+  tsx: 4.20.6
+  typescript: 5.9.3
+  yaml: 2.9.1

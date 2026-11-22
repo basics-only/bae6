@@ -1,0 +1,28 @@
+{
+  "name": "@bae6/context-embed-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=source --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@bae6/context-data": "workspace:*",
+    "@bae6/context-data-s3": "workspace:*",
+    "@bae6/context-embed": "workspace:*",
+    "@bae6/context-embed-pgvector": "workspace:*",
+    "jose": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

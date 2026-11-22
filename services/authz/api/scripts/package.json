@@ -1,0 +1,22 @@
+{
+  "name": "@bae6/authz-scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "model": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  },
+  "dependencies": {
+    "@openfga/sdk": "catalog:",
+    "@openfga/syntax-transformer": "catalog:"
+  }
+}

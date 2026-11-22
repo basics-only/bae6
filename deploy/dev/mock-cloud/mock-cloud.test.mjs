@@ -14,7 +14,14 @@ before(async () => {
       PORT: String(port),
       MOCK_CLOUD: "1",
       MOCK_EMBED_DIMENSIONS: "16",
-      MOCK_S3_OBJECTS: JSON.stringify({ b: { "a/one.txt": "hello world", "a/two.txt": "second", "a/with space é.txt": "third", "z/other.txt": "x" } }),
+      MOCK_S3_OBJECTS: JSON.stringify({
+        b: {
+          "a/one.txt": "hello world",
+          "a/two.txt": "second",
+          "a/with space é.txt": "third",
+          "z/other.txt": "x",
+        },
+      }),
     },
   });
   for (let i = 0; i < 50; i++) {
@@ -28,11 +35,22 @@ before(async () => {
 after(() => child.kill());
 
 const embed = async (inputText) =>
-  (await (await fetch(`${base}/model/m/invoke`, { method: "POST", body: JSON.stringify({ inputText }) })).json()).embedding;
+  (
+    await (
+      await fetch(`${base}/model/m/invoke`, {
+        method: "POST",
+        body: JSON.stringify({ inputText }),
+      })
+    ).json()
+  ).embedding;
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
 
 test("embeds texts that share words closer than unrelated texts", async () => {
-  const [q, near, far] = await Promise.all([embed("quarterly revenue report"), embed("revenue report for the quarter"), embed("cat photos")]);
+  const [q, near, far] = await Promise.all([
+    embed("quarterly revenue report"),
+    embed("revenue report for the quarter"),
+    embed("cat photos"),
+  ]);
   assert.equal(q.length, 16);
   assert.ok(dot(q, near) > dot(q, far));
 });
@@ -41,8 +59,13 @@ test("lists only keys under the prefix and reads them back", async () => {
   const listing = await (await fetch(`${base}/b?list-type=2&prefix=a/`)).text();
   assert.match(listing, /a\/one\.txt/);
   assert.doesNotMatch(listing, /z\/other\.txt/);
-  assert.equal(await (await fetch(`${base}/b/a/one.txt`)).text(), "hello world");
-  const part = await fetch(`${base}/b/a/one.txt`, { headers: { range: "bytes=0-4" } });
+  assert.equal(
+    await (await fetch(`${base}/b/a/one.txt`)).text(),
+    "hello world",
+  );
+  const part = await fetch(`${base}/b/a/one.txt`, {
+    headers: { range: "bytes=0-4" },
+  });
   assert.equal(part.status, 206);
   assert.equal(await part.text(), "hello");
 });
@@ -61,7 +84,11 @@ test("pages through keys with an opaque cursor even when keys need escaping", as
 });
 
 test("refuses a range that starts past the end and a zero page size", async () => {
-  assert.equal((await fetch(`${base}/b/a/one.txt`, { headers: { range: "bytes=50-60" } })).status, 416);
+  assert.equal(
+    (await fetch(`${base}/b/a/one.txt`, { headers: { range: "bytes=50-60" } }))
+      .status,
+    416,
+  );
   assert.equal((await fetch(`${base}/b?list-type=2&max-keys=0`)).status, 400);
 });
 

@@ -1,0 +1,26 @@
+{
+  "name": "@bae6/context-mcp-registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=source --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@bae6/context-mcp": "workspace:*",
+    "@bae6/context-mcp-postgres": "workspace:*",
+    "jose": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

@@ -8,5 +8,4 @@ dependencies = ["fastapi==0.162.0", "uvicorn==0.54.0", "bae6-authz"]
 package = false
 
 [tool.uv.sources]
-# The SDK is not published yet; use the checkout.
-bae6-authz = { path = "../../sdks/python" }
+bae6-authz = { workspace = true }

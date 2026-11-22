@@ -1,0 +1,26 @@
+{
+  "name": "@bae6/context-data-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=source --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@bae6/context-data": "workspace:*",
+    "@bae6/context-data-databricks": "workspace:*",
+    "@bae6/context-data-postgres": "workspace:*",
+    "@bae6/context-data-s3": "workspace:*",
+    "jose": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

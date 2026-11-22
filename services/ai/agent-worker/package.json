@@ -1,0 +1,25 @@
+{
+  "name": "@bae6/ai-agent-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=source --test --test-concurrency=1 src/*.test.ts"
+  },
+  "dependencies": {
+    "@bae6/ai-agents": "workspace:*",
+    "jose": "catalog:",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "ajv": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

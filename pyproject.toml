@@ -1,0 +1,25 @@
+[project]
+name = "bae6-workspace"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["bae6-authz", "bae6-ai", "bae6-context", "pytest==8.4.2", "ruff==0.14.1", "mypy==1.18.2"]
+
+[tool.uv.workspace]
+members = ["packages/*/py", "examples/authz/fastapi"]
+
+[tool.uv.sources]
+bae6-authz = { workspace = true }
+bae6-ai = { workspace = true }
+bae6-context = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+
+[tool.mypy]
+strict = true
