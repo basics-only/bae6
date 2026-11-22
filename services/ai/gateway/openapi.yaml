@@ -35,16 +35,16 @@ security:
   - bearer: []
 paths:
   /health/live:
-    $ref: "./vendor/openapi/common.yaml#/paths/~1health~1live"
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1live"
   /health/ready:
-    $ref: "./vendor/openapi/common.yaml#/paths/~1health~1ready"
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1ready"
   /v1/models:
     get:
       operationId: listModels
       summary: Models the caller's organization may use. Needs `ai:invoke`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The models.
@@ -53,11 +53,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModelList"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/chat/completions:
     post:
       operationId: createChatCompletion
@@ -74,8 +74,8 @@ paths:
         - $ref: "#/components/parameters/TaskType"
         - $ref: "#/components/parameters/Domain"
         - $ref: "#/components/parameters/RunIdHeader"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -98,23 +98,23 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "402":
           $ref: "#/components/responses/BudgetExceeded"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/IdempotencyConflict"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "502":
           $ref: "#/components/responses/ProviderError"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
         "504":
           $ref: "#/components/responses/Timeout"
   /v1/embeddings:
@@ -126,8 +126,8 @@ paths:
         - $ref: "#/components/parameters/TaskType"
         - $ref: "#/components/parameters/Domain"
         - $ref: "#/components/parameters/RunIdHeader"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -147,23 +147,23 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "402":
           $ref: "#/components/responses/BudgetExceeded"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/IdempotencyConflict"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "502":
           $ref: "#/components/responses/ProviderError"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
         "504":
           $ref: "#/components/responses/Timeout"
   /v1/budgets:
@@ -172,7 +172,7 @@ paths:
       summary: The organization's budget for the current UTC month. Needs `ai:usage:read`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The budget.
@@ -181,18 +181,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/Budget"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/credentials:
     get:
       operationId: getCredentialStatus
       summary: Where each configured provider's cloud credentials come from, and when they last refreshed. Needs `ai:usage:read`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: One entry per provider the gateway is configured with. Never contains credentials.
@@ -201,16 +201,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/CredentialStatusList"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
   /v1/usage:
     get:
       operationId: getUsage
       summary: The caller's application's usage, grouped by model and outcome. Needs `ai:usage:read`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - name: from
           in: query
           description: Inclusive. Defaults to the start of the current UTC month.
@@ -233,11 +233,11 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/usage/summary:
     get:
       operationId: getUsageSummary
@@ -254,7 +254,7 @@ paths:
         token have no end user and are not counted. Calls without a tag are the group `untagged`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
         - $ref: "#/components/parameters/UsageOrganization"
@@ -284,11 +284,11 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/usage/series:
     get:
       operationId: getUsageSeries
@@ -301,7 +301,7 @@ paths:
         series covers everything in scope; giving one without the other is `400`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
         - $ref: "#/components/parameters/UsageOrganization"
@@ -323,11 +323,11 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/usage/distribution:
     get:
       operationId: getUsageDistribution
@@ -341,7 +341,7 @@ paths:
         the measure, `users` is their count, `total` is `"0"` and `data` is empty.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
         - $ref: "#/components/parameters/UsageOrganization"
@@ -367,11 +367,11 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/usage/concentration:
     get:
       operationId: getUsageConcentration
@@ -383,7 +383,7 @@ paths:
         `/v1/usage/distribution`. Months where end users used none of the measure are left out.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
         - $ref: "#/components/parameters/UsageOrganization"
@@ -409,11 +409,11 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/task-types:
     get:
       operationId: listTaskTypes
@@ -421,7 +421,7 @@ paths:
       description: At most 50. Calls name one in `Bae6-Task-Type`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The task types, ordered by `id`.
@@ -430,11 +430,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/TagList"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/task-types/{id}:
     parameters:
       - $ref: "#/components/parameters/TagId"
@@ -446,7 +446,7 @@ paths:
         is `409 tag_limit`. Past calls keep the id they were made with.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -463,31 +463,31 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/TagLimit"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     delete:
       operationId: deleteTaskType
       summary: Remove a task type. Needs `ai:usage:admin`.
       description: New calls naming it are `400 unknown_tag`; past calls keep it.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "204":
           description: Removed.
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/domains:
     get:
       operationId: listDomains
@@ -495,7 +495,7 @@ paths:
       description: At most 50. Calls name one in `Bae6-Domain`.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The domains, ordered by `id`.
@@ -504,11 +504,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/TagList"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/domains/{id}:
     parameters:
       - $ref: "#/components/parameters/TagId"
@@ -520,7 +520,7 @@ paths:
         is `409 tag_limit`. Past calls keep the id they were made with.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -537,31 +537,31 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/TagLimit"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     delete:
       operationId: deleteDomain
       summary: Remove a domain. Needs `ai:usage:admin`.
       description: New calls naming it are `400 unknown_tag`; past calls keep it.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "204":
           description: Removed.
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/feedback:
     post:
       operationId: submitFeedback
@@ -576,7 +576,7 @@ paths:
         entries are kept 90 days by default.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -593,24 +593,24 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     get:
       operationId: listFeedback
       summary: The organization's feedback, newest first. Needs `feedback:read`.
       description: Comments are untrusted text written by callers; never put one in a prompt.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
@@ -628,15 +628,15 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
 components:
   securitySchemes:
     bearer:
-      $ref: "./vendor/openapi/common.yaml#/components/securitySchemes/bearer"
+      $ref: "../../../contracts/openapi/common.yaml#/components/securitySchemes/bearer"
   parameters:
     EndUserToken:
       name: Bae6-End-User-Token
@@ -754,7 +754,7 @@ components:
             $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
     ErrorEnvelope:
-      $ref: "./vendor/schemas/error-envelope.json"
+      $ref: "../../../contracts/schemas/error-envelope.json"
     Decimal:
       description: An exact decimal amount, as a string.
       type: string
@@ -789,7 +789,7 @@ components:
                   appear in later versions; clients tolerate them.
                 enum: [bedrock, vertex, huggingface]
               capabilities:
-                $ref: "./vendor/schemas/capability-descriptor.json"
+                $ref: "../../../contracts/schemas/capability-descriptor.json"
     ContentPart:
       oneOf:
         - type: object

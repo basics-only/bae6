@@ -34,16 +34,16 @@ security:
   - bearer: []
 paths:
   /health/live:
-    $ref: "./vendor/openapi/common.yaml#/paths/~1health~1live"
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1live"
   /health/ready:
-    $ref: "./vendor/openapi/common.yaml#/paths/~1health~1ready"
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1ready"
   /v1/sources:
     get:
       operationId: listSources
       summary: The caller's organization's sources and what each supports.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The sources.
@@ -52,11 +52,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/SourceList"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/sources/{sourceId}/query:
     post:
       operationId: query
@@ -69,7 +69,7 @@ paths:
         - $ref: "#/components/parameters/SourceId"
         - $ref: "#/components/parameters/EndUserToken"
         - $ref: "#/components/parameters/SourceToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -86,17 +86,17 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
         "504":
           $ref: "#/components/responses/Timeout"
   /v1/sources/{sourceId}/objects:
@@ -106,15 +106,15 @@ paths:
       parameters:
         - $ref: "#/components/parameters/SourceId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - name: prefix
           in: query
           description: Within the source's own prefix.
           schema:
             type: string
             maxLength: 1024
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/Cursor"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/Limit"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/Cursor"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/Limit"
       responses:
         "200":
           description: The page.
@@ -125,15 +125,15 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
         "504":
           $ref: "#/components/responses/Timeout"
   /v1/sources/{sourceId}/objects/metadata:
@@ -143,7 +143,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/SourceId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/Key"
         - $ref: "#/components/parameters/VersionId"
       responses:
@@ -156,15 +156,15 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
         "504":
           $ref: "#/components/responses/Timeout"
   /v1/sources/{sourceId}/objects/content:
@@ -174,7 +174,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/SourceId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/Key"
         - $ref: "#/components/parameters/VersionId"
         - name: Range
@@ -219,21 +219,21 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
         "504":
           $ref: "#/components/responses/Timeout"
 components:
   securitySchemes:
     bearer:
-      $ref: "./vendor/openapi/common.yaml#/components/securitySchemes/bearer"
+      $ref: "../../../contracts/openapi/common.yaml#/components/securitySchemes/bearer"
   parameters:
     SourceId:
       name: sourceId
@@ -290,7 +290,7 @@ components:
         items:
           type: array
           items:
-            $ref: "./vendor/schemas/capability-descriptor.json"
+            $ref: "../../../contracts/schemas/capability-descriptor.json"
         unavailable:
           description: IDs of the organization's sources that could not be opened just now.
           type: array
@@ -390,17 +390,17 @@ components:
         (`too_large`). Not retryable unchanged.
       headers:
         X-Request-Id:
-          $ref: "./vendor/openapi/common.yaml#/components/headers/RequestId"
+          $ref: "../../../contracts/openapi/common.yaml#/components/headers/RequestId"
       content:
         application/json:
           schema:
-            $ref: "./vendor/openapi/common.yaml#/components/schemas/ErrorEnvelope"
+            $ref: "../../../contracts/openapi/common.yaml#/components/schemas/ErrorEnvelope"
     Timeout:
       description: The source did not answer in time.
       headers:
         X-Request-Id:
-          $ref: "./vendor/openapi/common.yaml#/components/headers/RequestId"
+          $ref: "../../../contracts/openapi/common.yaml#/components/headers/RequestId"
       content:
         application/json:
           schema:
-            $ref: "./vendor/openapi/common.yaml#/components/schemas/ErrorEnvelope"
+            $ref: "../../../contracts/openapi/common.yaml#/components/schemas/ErrorEnvelope"

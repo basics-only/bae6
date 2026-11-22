@@ -46,9 +46,9 @@ security:
   - bearer: []
 paths:
   /health/live:
-    $ref: "./vendor/openapi/common.yaml#/paths/~1health~1live"
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1live"
   /health/ready:
-    $ref: "./vendor/openapi/common.yaml#/paths/~1health~1ready"
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1ready"
   /v1/servers:
     post:
       operationId: createServer
@@ -58,7 +58,7 @@ paths:
         `409 conflict`; add a version instead.
       parameters:
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -73,27 +73,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Server"
         "400":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/InvalidRequest"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     get:
       operationId: listServers
       summary: The organization's servers, by ID. Needs a registry scope.
       parameters:
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/Cursor"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/Limit"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/Cursor"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/Limit"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: One page of servers visible to the caller.
@@ -102,15 +102,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ServerPage"
         "400":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/InvalidRequest"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/servers/{serverId}:
     get:
       operationId: getServer
@@ -118,7 +118,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ServerId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The server.
@@ -127,15 +127,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/Server"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/servers/{serverId}/versions:
     post:
       operationId: createVersion
@@ -145,7 +145,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ServerId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -160,21 +160,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/Server"
         "400":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/InvalidRequest"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/servers/{serverId}/approve:
     post:
       operationId: approveVersion
@@ -185,7 +185,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ServerId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
         content:
@@ -200,21 +200,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/Server"
         "400":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/InvalidRequest"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/servers/{serverId}/revoke:
     post:
       operationId: revokeVersion
@@ -224,7 +224,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ServerId"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         content:
           application/json:
@@ -238,19 +238,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/Server"
         "400":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/InvalidRequest"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "413":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/PayloadTooLarge"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/PayloadTooLarge"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
   /v1/servers/{serverId}/health:
     get:
       operationId: getServerHealth
@@ -268,7 +268,7 @@ paths:
           schema:
             $ref: "#/components/schemas/VersionName"
         - $ref: "#/components/parameters/EndUserToken"
-        - $ref: "./vendor/openapi/common.yaml#/components/parameters/RequestId"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
           description: The probe result.
@@ -277,21 +277,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ServerHealth"
         "400":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/InvalidRequest"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
         "401":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unauthenticated"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Forbidden"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
         "404":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/NotFound"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
         "429":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/RateLimited"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/RateLimited"
         "503":
-          $ref: "./vendor/openapi/common.yaml#/components/responses/Unavailable"
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
 components:
   securitySchemes:
     bearer:
-      $ref: "./vendor/openapi/common.yaml#/components/securitySchemes/bearer"
+      $ref: "../../../contracts/openapi/common.yaml#/components/securitySchemes/bearer"
   parameters:
     ServerId:
       name: serverId
@@ -311,11 +311,11 @@ components:
       description: The request conflicts with the stored state.
       headers:
         X-Request-Id:
-          $ref: "./vendor/openapi/common.yaml#/components/headers/RequestId"
+          $ref: "../../../contracts/openapi/common.yaml#/components/headers/RequestId"
       content:
         application/json:
           schema:
-            $ref: "./vendor/openapi/common.yaml#/components/schemas/ErrorEnvelope"
+            $ref: "../../../contracts/openapi/common.yaml#/components/schemas/ErrorEnvelope"
   schemas:
     ServerId:
       type: string
@@ -494,7 +494,7 @@ components:
             $ref: "#/components/schemas/Version"
     ServerPage:
       allOf:
-        - $ref: "./vendor/openapi/common.yaml#/components/schemas/Page"
+        - $ref: "../../../contracts/openapi/common.yaml#/components/schemas/Page"
         - type: object
           properties:
             items:

@@ -7,12 +7,12 @@ import { parse } from "yaml";
 
 const Ajv2020 = AjvModule.default;
 const root = resolve(import.meta.dirname, "../..");
-const vendor = join(root, "contracts/vendor");
+const contracts = join(root, "../../../contracts");
 const json = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 
 function envelope() {
   const ajv = new Ajv2020({ strict: false, validateFormats: false });
-  const dir = join(vendor, "schemas");
+  const dir = join(contracts, "schemas");
   for (const f of readdirSync(dir)) ajv.addSchema(json(join(dir, f)));
   const validate = ajv.getSchema(
     "https://github.com/basics-only/bae6-contracts/schemas/error-envelope.json",
@@ -21,14 +21,10 @@ function envelope() {
   return validate;
 }
 
-test("vendors bae6-contracts v0.1.0", () => {
-  assert.equal(readFileSync(join(vendor, "VERSION"), "utf8").trim(), "v0.1.0");
-});
-
 test("authz error bodies conform to the shared bae6 error envelope", () => {
   const valid = envelope();
   const spec = parse(
-    readFileSync(join(root, "contracts/openapi.yaml"), "utf8"),
+    readFileSync(join(root, "openapi.yaml"), "utf8"),
   );
   const bodies: unknown[] = Object.values(
     spec.components.responses.Error.content["application/json"].examples,

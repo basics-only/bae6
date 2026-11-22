@@ -99,12 +99,12 @@ const cases = [
 ];
 const evalRun = { name: "smoke", datasetVersion: "1", model: "m", cases };
 
-const contracts = resolve(import.meta.dirname, "../../../contracts");
-const spec = parse(readFileSync(join(contracts, "eval-worker.yaml"), "utf8"));
+const contracts = resolve(import.meta.dirname, "../../../../contracts");
+const spec = parse(readFileSync(resolve(import.meta.dirname, "../openapi.yaml"), "utf8"));
 const ajv = new AjvModule.default({ strict: false, validateFormats: false });
-for (const f of readdirSync(join(contracts, "vendor/schemas"))) {
+for (const f of readdirSync(join(contracts, "schemas"))) {
   ajv.addSchema(
-    JSON.parse(readFileSync(join(contracts, "vendor/schemas", f), "utf8")),
+    JSON.parse(readFileSync(join(contracts, "schemas", f), "utf8")),
   );
 }
 ajv.addSchema(spec, "eval-worker");
