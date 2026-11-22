@@ -114,7 +114,9 @@ def test_transport_error_does_not_carry_a_token() -> None:
 def test_reads_a_last_stream_line_sent_without_a_newline() -> None:
     last = json.dumps({"choices": [], "usage": USAGE})
     body = f"data: {last}\n\ndata: [DONE]"
-    handler = lambda _: httpx.Response(200, text=body)
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=body)
+
     assert run(handler, collect)[-1]["usage"] == USAGE
 
 
