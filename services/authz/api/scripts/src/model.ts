@@ -34,8 +34,9 @@ export function validateModel(modelFile: string): ModelJson {
     );
   }
 
+  const runtime = process.env.BAE6_CONTAINER_RUNTIME ?? "podman";
   const result = spawnSync(
-    "docker",
+    runtime,
     [
       "run",
       "--rm",
@@ -51,7 +52,7 @@ export function validateModel(modelFile: string): ModelJson {
   );
   if (result.error) {
     throw new Error(
-      `could not run the fga CLI via docker: ${result.error.message}`,
+      `could not run the fga CLI via ${runtime}: ${result.error.message}`,
     );
   }
   if (result.status !== 0) {

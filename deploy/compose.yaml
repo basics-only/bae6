@@ -1,24 +1,131 @@
-name: bae6-integration
+name: bae6
 
 x-dev: &dev
   NODE_ENV: development
   BAE6_ALLOW_HTTP_JWKS: "true"
 
+x-health: &health
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+
 services:
   postgres:
     image: pgvector/pgvector:0.8.1-pg17
+    profiles: [authz, ai, context, all]
     environment:
-      POSTGRES_PASSWORD: dev-only-admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-dev-only-admin}
+      OPENFGA_DB_PASSWORD: ${OPENFGA_DB_PASSWORD:-dev-only-openfga}
+      AUTHZ_DB_PASSWORD: ${AUTHZ_DB_PASSWORD:-dev-only-authz}
+      AI_DB_PASSWORD: ${AI_DB_PASSWORD:-dev-only-ai}
+      EMBED_DB_PASSWORD: ${EMBED_DB_PASSWORD:-dev-only-embed}
+      MCP_DB_PASSWORD: ${MCP_DB_PASSWORD:-dev-only-mcp}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
-      - ./postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ./compose/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 2s
       timeout: 3s
       retries: 30
 
+  openfga-migrate:
+    image: openfga/openfga:v1.10.2
+    profiles: [authz, all]
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:-dev-only-openfga}@postgres:5432/openfga?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  openfga:
+    image: openfga/openfga:v1.10.2
+    profiles: [authz, all]
+    command: run
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:-dev-only-openfga}@postgres:5432/openfga?sslmode=disable
+      OPENFGA_TRACE_ENABLED: ${BAE6_OPENFGA_TRACE:-false}
+      OPENFGA_TRACE_OTLP_ENDPOINT: jaeger:4317
+    ports:
+      - "127.0.0.1:8180:8080"
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+
+  authz-api: &authz-api
+    image: localhost/bae6-authz-api:dev
+    build:
+      context: ..
+      dockerfile: services/authz/api/Dockerfile
+    profiles: [authz, all]
+    <<: *health
+    environment:
+      PORT: "8080"
+      OPENFGA_API_URL: http://openfga:8080
+      BAE6_DATABASE_URL: postgres://authz:${AUTHZ_DB_PASSWORD:-dev-only-authz}@postgres:5432/authz
+      NODE_ENV: development
+      BAE6_AUTH_MODE: fixture
+      BAE6_FIXTURE_AUTH_FILE: /etc/authz/auth.json
+      BAE6_FIXTURE_END_USERS_FILE: /etc/authz/end-users.json
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      BAE6_METRICS_PORT: ${BAE6_METRICS_PORT:-}
+      BAE6_METRICS_HOST: 0.0.0.0
+    volumes:
+      - ./compose/authz/auth.json:/etc/authz/auth.json:ro
+      - ./compose/authz/end-users.json:/etc/authz/end-users.json:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openfga:
+        condition: service_started
+
+  authz-api-replica:
+    <<: *authz-api
+    profiles: [replicas]
+    ports: []
+    deploy:
+      replicas: ${BAE6_REPLICAS:-2}
+
+  authz-lb:
+    image: nginx:1.27.3-alpine
+    profiles: [replicas]
+    volumes:
+      - ./compose/authz/lb.nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:8090:80"
+    depends_on:
+      authz-api-replica:
+        condition: service_healthy
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    profiles: [observability]
+    ports:
+      - "127.0.0.1:16686:16686"
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    profiles: [observability]
+    volumes:
+      - ./compose/authz/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
   mock-oidc:
-    image: ${BAE6_MOCK_OIDC_IMAGE:-localhost/bae6-mock-oidc:dev}
+    image: localhost/bae6-mock-oidc:dev
+    build:
+      context: ..
+      dockerfile: deploy/dev/mock-oidc/Dockerfile
+    profiles: [ai, context, all]
     environment:
       NODE_ENV: development
       MOCK_OIDC_ISSUER: http://mock-oidc:8080
@@ -26,7 +133,11 @@ services:
       - "127.0.0.1:8085:8080"
 
   mock-oidc-other:
-    image: ${BAE6_MOCK_OIDC_IMAGE:-localhost/bae6-mock-oidc:dev}
+    image: localhost/bae6-mock-oidc:dev
+    build:
+      context: ..
+      dockerfile: deploy/dev/mock-oidc/Dockerfile
+    profiles: [context, all]
     environment:
       NODE_ENV: development
       MOCK_OIDC_ISSUER: http://mock-oidc-other:8080
@@ -34,7 +145,10 @@ services:
       - "127.0.0.1:8086:8080"
 
   mock-cloud:
-    image: ${BAE6_MOCK_CLOUD_IMAGE:-localhost/bae6-mock-cloud:dev}
+    image: localhost/bae6-mock-cloud:dev
+    build:
+      context: ./dev/mock-cloud
+    profiles: [ai, context, all]
     environment:
       MOCK_CLOUD: "1"
       MOCK_EMBED_DIMENSIONS: "64"
@@ -46,6 +160,7 @@ services:
 
   token-minter:
     image: docker.io/curlimages/curl:8.11.1
+    profiles: [context, all]
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -71,13 +186,18 @@ services:
       - mock-oidc
 
   ai-gateway:
-    image: ${BAE6_AI_GATEWAY_IMAGE:-localhost/bae6-ai-gateway:dev}
+    image: localhost/bae6-ai-gateway:dev
+    build:
+      context: ..
+      dockerfile: services/ai/gateway/Dockerfile
+    profiles: [ai, context, all]
+    <<: *health
     environment:
       <<: *dev
       BAE6_ALLOW_CUSTOM_PROVIDER_ENDPOINTS: "true"
       AWS_ACCESS_KEY_ID: mock
       AWS_SECRET_ACCESS_KEY: mock
-      BAE6_DATABASE_URL: postgres://ai:dev-only-ai@postgres:5432/ai
+      BAE6_DATABASE_URL: postgres://ai:${AI_DB_PASSWORD:-dev-only-ai}@postgres:5432/ai
       BAE6_AI_ISSUERS: >-
         [{"issuer":"http://mock-oidc:8080","audience":"bae6-ai","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
       BAE6_AI_CONFIG: >-
@@ -96,7 +216,12 @@ services:
       mock-cloud: {condition: service_started}
 
   data-api:
-    image: ${BAE6_CONTEXT_DATA_API_IMAGE:-localhost/bae6-context-data-api:dev}
+    image: localhost/bae6-context-data-api:dev
+    build:
+      context: ..
+      dockerfile: services/context/data-api/Dockerfile
+    profiles: [context, all]
+    <<: *health
     environment:
       <<: *dev
       BAE6_ALLOW_HTTP_SOURCES: "true"
@@ -110,16 +235,22 @@ services:
       - "127.0.0.1:8082:8080"
     depends_on:
       mock-oidc: {condition: service_started}
+      mock-oidc-other: {condition: service_started}
       mock-cloud: {condition: service_started}
 
   embed-api:
-    image: ${BAE6_CONTEXT_EMBED_API_IMAGE:-localhost/bae6-context-embed-api:dev}
+    image: localhost/bae6-context-embed-api:dev
+    build:
+      context: ..
+      dockerfile: services/context/embed-api/Dockerfile
+    profiles: [context, all]
+    <<: *health
     environment:
       <<: *dev
       BAE6_ALLOW_HTTP_SOURCES: "true"
       AWS_ACCESS_KEY_ID: mock
       AWS_SECRET_ACCESS_KEY: mock
-      BAE6_EMBED_DATABASE_URL: postgres://embed:dev-only-embed@postgres:5432/embed
+      BAE6_EMBED_DATABASE_URL: postgres://embed:${EMBED_DB_PASSWORD:-dev-only-embed}@postgres:5432/embed
       BAE6_AI_URL: http://ai-gateway:8080
       BAE6_AI_TOKEN_FILE: /tokens/ai
       BAE6_EMBED_ISSUERS: >-
@@ -134,16 +265,21 @@ services:
       - "127.0.0.1:8083:8080"
     depends_on:
       postgres: {condition: service_healthy}
-      ai-gateway: {condition: service_started}
+      ai-gateway: {condition: service_healthy}
       token-minter: {condition: service_healthy}
       mock-cloud: {condition: service_started}
 
   mcp-registry:
-    image: ${BAE6_CONTEXT_MCP_REGISTRY_IMAGE:-localhost/bae6-context-mcp-registry:dev}
+    image: localhost/bae6-context-mcp-registry:dev
+    build:
+      context: ..
+      dockerfile: services/context/mcp-registry/Dockerfile
+    profiles: [context, all]
+    <<: *health
     environment:
       <<: *dev
       BAE6_MCP_ALLOW_INSECURE_ENDPOINTS: "true"
-      BAE6_MCP_DATABASE_URL: postgres://mcp:dev-only-mcp@postgres:5432/mcp
+      BAE6_MCP_DATABASE_URL: postgres://mcp:${MCP_DB_PASSWORD:-dev-only-mcp}@postgres:5432/mcp
       BAE6_MCP_ISSUERS: >-
         [{"issuer":"http://mock-oidc:8080","audience":"bae6-context-mcp","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
     ports:
@@ -153,4 +289,5 @@ services:
       mock-oidc: {condition: service_started}
 
 volumes:
+  pgdata:
   tokens:

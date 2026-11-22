@@ -1,10 +1,10 @@
 # P7 gate
 
-Stack: `integration/compose.yaml`. Demo: `node --test integration/demo.test.mjs` (5 pass). Load: `node integration/load.mjs`. All cloud providers are mocks; live smoke tests are pending.
+Stack: `deploy/compose.yaml` (`make up PROFILE=context`). Demo: `node --test deploy/integration/demo.test.mjs` (5 pass). Load: `node deploy/integration/load.mjs`. All cloud providers are mocks; live smoke tests are pending.
 
 ## Version matrix
 
-Pinned in `integration/versions.yaml`.
+Services are built from one commit; versions are recorded by release tags.
 
 | Runtime | Version | Image |
 |---|---|---|
