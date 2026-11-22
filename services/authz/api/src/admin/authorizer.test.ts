@@ -21,7 +21,7 @@ async function adminStore() {
   }).writeAuthorizationModel(
     transformer.transformDSLToJSONObject(
       readFileSync(
-        join(import.meta.dirname, "../../../../models/openfga/bae6-admin.fga"),
+        join(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
         "utf8",
       ),
     ),

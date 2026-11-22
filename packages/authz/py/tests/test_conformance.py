@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from bae6_authz import Check, Authz, AuthzError
 
-CASES = sorted((Path(__file__).parents[3] / "tests/conformance/cases").glob("*.json"))
+CASES = sorted((Path(__file__).parents[4] / "services/authz/api/tests/conformance/cases").glob("*.json"))
 BEARER = "svc-token"
 # Case error fields that differ from the SDK attribute name.
 ATTRIBUTES = {"requestId": "request_id"}

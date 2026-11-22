@@ -8,7 +8,7 @@ import { createModelService } from "./models.js";
 // Core checks run before any OpenFGA or database call, so no infrastructure is needed:
 // every case below must be refused before the (unreachable) apiUrl is touched.
 const core = readFileSync(
-  join(import.meta.dirname, "../../../../models/openfga/core.fga"),
+  join(import.meta.dirname, "../../models/openfga/core.fga"),
   "utf8",
 );
 const service = createModelService({
@@ -108,7 +108,7 @@ test("refuses an extension when the deployment has no core model", async () => {
 });
 
 const base = readFileSync(
-  join(import.meta.dirname, "../../../../models/openfga/base.fga"),
+  join(import.meta.dirname, "../../models/openfga/base.fga"),
   "utf8",
 );
 

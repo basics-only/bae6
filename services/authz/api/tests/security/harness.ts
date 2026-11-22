@@ -18,7 +18,7 @@ export function required(name: string): string {
   return value;
 }
 
-const API_DIR = join(import.meta.dirname, "../../apps/api");
+const API_DIR = join(import.meta.dirname, "../..");
 
 export type Fault = "pass" | "drop" | "hang";
 

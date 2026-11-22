@@ -94,7 +94,7 @@ async function withApp(
       apiUrl: apiUrl as string,
       baseModel: transformer.transformDSLToJSONObject(
         readFileSync(
-          join(import.meta.dirname, "../../../../models/openfga/base.fga"),
+          join(import.meta.dirname, "../../models/openfga/base.fga"),
           "utf8",
         ),
       ),

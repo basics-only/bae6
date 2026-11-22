@@ -7,7 +7,10 @@ import { test } from "node:test";
 import { Authz, type Consistency } from "./index.js";
 
 // Runs the shared cases in tests/conformance; see its README for the format.
-const casesDir = join(import.meta.dirname, "../../../tests/conformance/cases");
+const casesDir = join(
+  import.meta.dirname,
+  "../../../../services/authz/api/tests/conformance/cases",
+);
 const BEARER = "svc-token";
 
 type Json = Record<string, unknown>;

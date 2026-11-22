@@ -77,7 +77,7 @@ interface Case {
 
 const cases = resolve(
   import.meta.dirname,
-  "../../../contracts/vendor/fixtures/transport/cases",
+  "../../../../contracts/fixtures/transport/cases",
 );
 for (const file of readdirSync(cases)) {
   const c = JSON.parse(readFileSync(join(cases, file), "utf8")) as Case;

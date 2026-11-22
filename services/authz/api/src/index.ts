@@ -91,10 +91,7 @@ if (
 }
 
 const baseModel = transformer.transformDSLToJSONObject(
-  readFileSync(
-    join(import.meta.dirname, "../../../models/openfga/base.fga"),
-    "utf8",
-  ),
+  readFileSync(join(import.meta.dirname, "../models/openfga/base.fga"), "utf8"),
 );
 const admin = createAdminService({
   pool,
@@ -132,7 +129,7 @@ const modelsHandler = modelRoutes(
     lookup: dbLookup(pool),
     apiUrl: required("OPENFGA_API_URL"),
     core: readFileSync(
-      join(import.meta.dirname, "../../../models/openfga/core.fga"),
+      join(import.meta.dirname, "../models/openfga/core.fga"),
       "utf8",
     ),
   }),

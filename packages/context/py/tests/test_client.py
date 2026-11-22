@@ -19,7 +19,7 @@ from bae6_context import (
     Transport,
 )
 
-CASES = Path(__file__).parents[3] / "contracts/vendor/fixtures/transport/cases"
+CASES = Path(__file__).parents[4] / "contracts/fixtures/transport/cases"
 
 
 def _kind(err: ContextError) -> str:

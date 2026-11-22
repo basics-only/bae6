@@ -93,10 +93,7 @@ test("exits 2 when no file is given", () => {
 
 test("the config shipped in deploy/values.yaml is valid", () => {
   const values = parse(
-    readFileSync(
-      new URL("../../../deploy/values.yaml", import.meta.url),
-      "utf8",
-    ),
+    readFileSync(new URL("../values.yaml", import.meta.url), "utf8"),
   ) as { env: { BAE6_AI_CONFIG: string } };
   const run = check(values.env.BAE6_AI_CONFIG);
   assert.equal(run.status, 0, run.stderr);

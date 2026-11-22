@@ -62,7 +62,7 @@ const principals: Record<string, Principal> = {
 };
 
 const base = readFileSync(
-  join(import.meta.dirname, "../../../../models/openfga/base.fga"),
+  join(import.meta.dirname, "../../models/openfga/base.fga"),
   "utf8",
 );
 // Same as base except a team no longer grants its members view access to a project.
@@ -137,7 +137,7 @@ async function withApp(
         lookup: dbLookup(pool),
         apiUrl: apiUrl as string,
         core: readFileSync(
-          join(import.meta.dirname, "../../../../models/openfga/core.fga"),
+          join(import.meta.dirname, "../../models/openfga/core.fga"),
           "utf8",
         ),
       }),
