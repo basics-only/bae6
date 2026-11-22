@@ -20,9 +20,13 @@ import {
 } from "./auth/index.js";
 import { workloadRoutes } from "./auth/workloadRoutes.js";
 import { createBindingStore } from "./auth/workloads.js";
+import { ttlCached } from "./cache.js";
 import { createResolver, dbLookup } from "./checks/resolver.js";
 import { checkRoutes } from "./checks/routes.js";
-import { createCheckService } from "./checks/service.js";
+import {
+  createCheckService,
+  LIST_OBJECTS_MAX_RESULTS,
+} from "./checks/service.js";
 import { migrate } from "./db/migrate.js";
 import { readiness } from "./health.js";
 import { setupObservability } from "./observability.js";
@@ -47,10 +51,19 @@ const pool = new pg.Pool({
 // An idle-client error (e.g. Postgres restart) must not crash the process.
 pool.on("error", () => console.error(JSON.stringify({ msg: "pool error" })));
 
+// Bounds how long an unbind or model rebind can lag on the check path; 0 turns the cache off.
+const lookupCacheMs = Number(process.env.BAE6_LOOKUP_CACHE_MS ?? 5000);
+if (!Number.isInteger(lookupCacheMs) || lookupCacheMs < 0) {
+  throw new Error("BAE6_LOOKUP_CACHE_MS must be a non-negative integer");
+}
+
 const bindings = createBindingStore(pool);
 const { authenticate, verifyEndUser } =
   process.env.BAE6_AUTH_MODE === "oidc"
-    ? oidcAuthFromEnv(process.env, bindings.lookup)
+    ? oidcAuthFromEnv(
+        process.env,
+        ttlCached(bindings.lookup, lookupCacheMs, (ids) => ids.length > 0),
+      )
     : {
         authenticate: authenticatorFromEnv(process.env),
         verifyEndUser: endUserVerifierFromEnv(process.env),
@@ -108,10 +121,27 @@ const maxBatchSize = Number(process.env.BAE6_BATCH_MAX ?? 100);
 if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 100) {
   throw new Error("BAE6_BATCH_MAX must be an integer from 1 to 100");
 }
+// Must equal what OpenFGA runs with, or a capped list looks complete.
+const listObjectsMaxResults = Number(
+  process.env.OPENFGA_LIST_OBJECTS_MAX_RESULTS ?? LIST_OBJECTS_MAX_RESULTS,
+);
+if (!Number.isInteger(listObjectsMaxResults) || listObjectsMaxResults < 1) {
+  throw new Error(
+    "OPENFGA_LIST_OBJECTS_MAX_RESULTS must be a positive integer",
+  );
+}
 const resolver = createResolver(dbLookup(pool), required("OPENFGA_API_URL"));
 const checkService = createCheckService({
-  resolver,
+  resolver: createResolver(
+    ttlCached(
+      dbLookup(pool),
+      lookupCacheMs,
+      (found) => found !== null && found.modelId !== null,
+    ),
+    required("OPENFGA_API_URL"),
+  ),
   timeoutMs: checkTimeoutMs,
+  listObjectsMaxResults,
 });
 const checks = checkRoutes({
   maxBatchSize,

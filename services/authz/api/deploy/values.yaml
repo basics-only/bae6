@@ -15,6 +15,8 @@ env:
   # The chart's readiness probe fails after 2 x 2s, so the pod leaves the Service well within this.
   BAE6_SHUTDOWN_DELAY_MS: "10000"
   OPENFGA_API_URL: http://openfga.openfga.svc.cluster.local:8080
+  # Must equal the OPENFGA_LIST_OBJECTS_MAX_RESULTS OpenFGA runs with, or a capped list can look complete.
+  OPENFGA_LIST_OBJECTS_MAX_RESULTS: "1000"
   # Printed by `bootstrap-admin` (docs/decisions/0004-admin-authorization.md); the API will not start without them.
   BAE6_ADMIN_STORE_ID: replace-with-the-bae6-admin-store-id
   BAE6_ADMIN_MODEL_ID: replace-with-the-bae6-admin-model-id

@@ -53,6 +53,7 @@ services:
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
       OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:-dev-only-openfga}@postgres:5432/openfga?sslmode=disable
+      OPENFGA_LIST_OBJECTS_MAX_RESULTS: ${OPENFGA_LIST_OBJECTS_MAX_RESULTS:-1000}
       OPENFGA_TRACE_ENABLED: ${BAE6_OPENFGA_TRACE:-false}
       OPENFGA_TRACE_OTLP_ENDPOINT: jaeger:4317
     ports:
@@ -71,6 +72,7 @@ services:
     environment:
       PORT: "8080"
       OPENFGA_API_URL: http://openfga:8080
+      OPENFGA_LIST_OBJECTS_MAX_RESULTS: ${OPENFGA_LIST_OBJECTS_MAX_RESULTS:-1000}
       BAE6_DATABASE_URL: postgres://authz:${AUTHZ_DB_PASSWORD:-dev-only-authz}@postgres:5432/authz
       NODE_ENV: development
       BAE6_AUTH_MODE: fixture

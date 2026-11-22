@@ -16,10 +16,15 @@ export function createSessionStore(now: () => number = Date.now) {
   const sessions = new Map<string, Session>();
   return {
     create(session: Session): string {
+      // Sessions whose cookie never comes back would otherwise stay until restart.
+      for (const [id, s] of sessions) {
+        if (s.expiresAt <= now()) sessions.delete(id);
+      }
       const id = randomBytes(32).toString("base64url");
       sessions.set(id, session);
       return id;
     },
+    size: () => sessions.size,
     get(id: string | undefined): Session | null {
       const session = id ? sessions.get(id) : undefined;
       if (!id || !session) return null;
