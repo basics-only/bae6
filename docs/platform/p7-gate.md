@@ -52,7 +52,7 @@ Read-only review of tenant isolation, issuer-to-org binding, token handling, SSR
 | F4 chart egress default is empty | Accepted, deny by default |
 | F5 integration images not digest-pinned | Accepted, dev only |
 | S1 embed-api uses one AI token for every org | Fixed in v0.1.2: a config naming more than one organization is refused, so run one embed deployment per org |
-| S2 S3 endpoint has no host allowlist | Fixed in v0.1.2 for non-AWS hosts. Any `*.amazonaws.com` host is still accepted, including ones other AWS customers control |
+| S2 S3 endpoint has no host allowlist | Fixed: only `s3[-fips][.dualstack].<region>.amazonaws.com` for the configured region is accepted outside development |
 | S3 embed principals ignore subject type | Fixed in v0.1.2. ACLs that matched a workload as `user:<id>` must use `workload:<id>` |
 | S4 embed `BAE6_AI_URL` is not validated | Fixed in v0.1.2 for hosts outside the cluster. In-cluster `*.svc.cluster.local` http is still allowed, so the token is plaintext until the gateway serves TLS |
 | S5 data-api has one scope for all operations | By design |

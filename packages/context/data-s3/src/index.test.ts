@@ -207,10 +207,19 @@ test("sends credentials only to AWS hosts unless development allows otherwise", 
   };
   assert.throws(
     () => createS3Source({ ...cfg, endpoint: "https://s3.example.com" }),
-    /not an AWS host/,
+    /not an AWS S3 host/,
   );
+  for (const endpoint of [
+    "https://abc.execute-api.us-east-1.amazonaws.com",
+    "https://s3.eu-west-1.amazonaws.com",
+  ]) {
+    assert.throws(
+      () => createS3Source({ ...cfg, endpoint }),
+      /not an AWS S3 host/,
+    );
+  }
   assert.doesNotThrow(() =>
-    createS3Source({ ...cfg, endpoint: "https://s3.eu-west-1.amazonaws.com" }),
+    createS3Source({ ...cfg, endpoint: "https://s3.us-east-1.amazonaws.com" }),
   );
   assert.doesNotThrow(() =>
     createS3Source({
