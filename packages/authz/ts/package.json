@@ -24,6 +24,9 @@
     "test:integration": "tsx --test tests/integration.test.ts",
     "test:databricks": "tsx --test tests/databricks.test.ts"
   },
+  "dependencies": {
+    "@bae6/sdk-core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:",

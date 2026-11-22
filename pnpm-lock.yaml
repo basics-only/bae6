@@ -154,6 +154,10 @@ importers:
         version: 5.9.3
 
   packages/ai/ts:
+    dependencies:
+      '@bae6/sdk-core':
+        specifier: workspace:*
+        version: link:../../core/ts
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -166,6 +170,10 @@ importers:
         version: 5.9.3
 
   packages/authz/ts:
+    dependencies:
+      '@bae6/sdk-core':
+        specifier: workspace:*
+        version: link:../../core/ts
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -316,6 +324,22 @@ importers:
         version: 5.9.3
 
   packages/context/ts:
+    dependencies:
+      '@bae6/sdk-core':
+        specifier: workspace:*
+        version: link:../../core/ts
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.18.10
+      tsx:
+        specifier: 'catalog:'
+        version: 4.20.6
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
+  packages/core/ts:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

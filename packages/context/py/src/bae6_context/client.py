@@ -1,18 +1,14 @@
-import asyncio
-import json
-import random
 import re
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Self, Unpack
 from urllib.parse import quote
 
 import httpx
-
-MAX_RESPONSE_BYTES = 64 * 1024 * 1024
-MAX_ATTEMPTS = 3
-RETRYABLE = {502, 503, 504}
+from bae6_sdk_core import Credentials, Errors, Options
+from bae6_sdk_core import Transport as CoreTransport
+from bae6_sdk_core import parse_json as _parse
 
 
 class ContextError(Exception):
@@ -60,18 +56,9 @@ class ObjectContent:
     version_id: str | None = None
 
 
-def _parse(raw: bytes) -> object:
-    try:
-        return json.loads(raw)
-    except (ValueError, RecursionError):
-        return None
-
-
 def _api_error(status: int, raw: bytes) -> ContextApiError:
     body = _parse(raw)
-    envelope = (
-        body if isinstance(body, dict) and isinstance(body.get("code"), str) else {}
-    )
+    envelope = body if isinstance(body, dict) and isinstance(body.get("code"), str) else {}
     message = envelope.get("message")
     request_id = envelope.get("requestId")
     retry = envelope.get("retryAfterSeconds")
@@ -88,29 +75,34 @@ def _invalid() -> ContextInvalidResponseError:
     return ContextInvalidResponseError("the service returned an unusable response")
 
 
-class Transport:
+_ERRORS = Errors(
+    timeout=lambda seconds: ContextTimeoutError(f"the service did not answer within {seconds} s"),
+    unreachable=lambda name: ContextTransportError(f"could not reach the service ({name})"),
+    too_large=lambda: ContextTransportError("the service response is too large"),
+    api=_api_error,
+)
+
+
+class Transport(CoreTransport):
     """Shared bae6 SDK transport: per-attempt timeout, no redirects, bounded retries of
     idempotent requests only."""
 
     def __init__(
         self,
         base_url: str,
-        credentials: str,
+        credentials: Credentials,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        **options: Unpack[Options],
     ) -> None:
-        self._timeout = timeout
-        self._http = httpx.AsyncClient(
-            base_url=base_url,
-            headers={"authorization": f"Bearer {credentials}"},
-            timeout=None,
-            # Credentials must not follow a redirect to another host.
-            follow_redirects=False,
+        super().__init__(
+            base_url,
+            credentials,
+            timeout=timeout,
+            errors=_ERRORS,
             transport=transport,
+            **options,
         )
-
-    async def aclose(self) -> None:
-        await self._http.aclose()
 
     async def request(
         self,
@@ -135,91 +127,6 @@ class Transport:
             raise _invalid()
         return parsed
 
-    async def raw(
-        self,
-        method: str,
-        path: str,
-        *,
-        body: Any = None,
-        headers: dict[str, str] | None = None,
-        params: dict[str, str] | None = None,
-        idempotency_key: str | None = None,
-    ) -> httpx.Response:
-        idempotent = method == "GET" or idempotency_key is not None
-        send_headers = dict(headers or {})
-        if idempotency_key is not None:
-            send_headers["idempotency-key"] = idempotency_key
-        attempt = 0
-        while True:
-            attempt += 1
-            last = not idempotent or attempt == MAX_ATTEMPTS
-            try:
-                response = await self._once(method, path, body, send_headers, params)
-            except ContextTransportError:
-                if last:
-                    raise
-                await _backoff(attempt)
-                continue
-            if 200 <= response.status_code < 300:
-                return response
-            error = _api_error(response.status_code, response.content)
-            if (
-                last
-                or response.status_code not in RETRYABLE
-                or (error.retry_after_seconds or 0) > 1
-            ):
-                raise error
-            await _backoff(attempt)
-
-    async def _once(
-        self,
-        method: str,
-        path: str,
-        body: Any,
-        headers: dict[str, str],
-        params: dict[str, str] | None,
-    ) -> httpx.Response:
-        try:
-            async with asyncio.timeout(self._timeout):
-                request = self._http.build_request(
-                    method,
-                    path,
-                    content=None if body is None else json.dumps(body).encode(),
-                    headers={**headers, "content-type": "application/json"}
-                    if body is not None
-                    else headers,
-                    params=params,
-                )
-                response = await self._http.send(request, stream=True)
-                try:
-                    chunks = []
-                    size = 0
-                    async for chunk in response.aiter_bytes():
-                        size += len(chunk)
-                        if size > MAX_RESPONSE_BYTES:
-                            raise ContextTransportError(
-                                "the service response is too large"
-                            )
-                        chunks.append(chunk)
-                finally:
-                    await response.aclose()
-        except TimeoutError:
-            raise ContextTimeoutError(
-                f"the service did not answer within {self._timeout} s"
-            ) from None
-        except httpx.HTTPError as e:
-            # Raised `from None`: the cause can quote a header value, i.e. a token.
-            raise ContextTransportError(
-                f"could not reach the service ({type(e).__name__})"
-            ) from None
-        return httpx.Response(
-            response.status_code, headers=response.headers, content=b"".join(chunks)
-        )
-
-
-async def _backoff(attempt: int) -> None:
-    await asyncio.sleep(random.random() * 0.04 * attempt)
-
 
 def _source(source_id: str) -> str:
     return f"/v1/sources/{quote(source_id, safe='')}"
@@ -234,12 +141,13 @@ class DataClient:
     def __init__(
         self,
         base_url: str,
-        credentials: str,
+        credentials: Credentials,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        **options: Unpack[Options],
     ) -> None:
         """`timeout` is per attempt; raise it above the source's query timeout."""
-        self._http = Transport(base_url, credentials, timeout, transport)
+        self._http = Transport(base_url, credentials, timeout, transport, **options)
 
     async def __aenter__(self) -> Self:
         return self
@@ -257,9 +165,7 @@ class DataClient:
 
     async def sources(self, *, end_user_token: str | None = None) -> dict[str, Any]:
         """`unavailable`: IDs of sources that could not be opened just now."""
-        body = await self._http.request(
-            "GET", "/v1/sources", headers=_headers(end_user_token)
-        )
+        body = await self._http.request("GET", "/v1/sources", headers=_headers(end_user_token))
         if (
             not isinstance(body, dict)
             or not isinstance(body.get("items"), list)
@@ -365,11 +271,7 @@ class DataClient:
         etag = response.headers.get("etag")
         modified = response.headers.get("last-modified")
         total = re.search(r"/(\d+)$", response.headers.get("content-range", ""))
-        if (
-            not etag
-            or not modified
-            or (response.status_code == 206) != (total is not None)
-        ):
+        if not etag or not modified or (response.status_code == 206) != (total is not None):
             raise _invalid()
         try:
             last_modified = parsedate_to_datetime(modified).isoformat()
@@ -408,11 +310,12 @@ class EmbedClient:
     def __init__(
         self,
         base_url: str,
-        credentials: str,
+        credentials: Credentials,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        **options: Unpack[Options],
     ) -> None:
-        self._http = Transport(base_url, credentials, timeout, transport)
+        self._http = Transport(base_url, credentials, timeout, transport, **options)
 
     async def __aenter__(self) -> Self:
         return self
@@ -442,9 +345,7 @@ class EmbedClient:
             raise _invalid()
         return body
 
-    async def start_sync(
-        self, collection_id: str, *, prefix: str | None = None
-    ) -> dict[str, Any]:
+    async def start_sync(self, collection_id: str, *, prefix: str | None = None) -> dict[str, Any]:
         """Not retried: each call queues a sync. `prefix` also matches keys that extend it."""
         body = await self._http.request(
             "POST",
@@ -471,10 +372,7 @@ class EmbedClient:
         )
         if not isinstance(body, dict) or not isinstance(body.get("hits"), list):
             raise _invalid()
-        if not all(
-            isinstance(h, dict) and isinstance(h.get("chunkId"), str)
-            for h in body["hits"]
-        ):
+        if not all(isinstance(h, dict) and isinstance(h.get("chunkId"), str) for h in body["hits"]):
             raise _invalid()
         return body["hits"]
 
@@ -512,10 +410,7 @@ def _mcp_server(body: object, server_id: str | None = None) -> dict[str, Any]:
         )
         or (server_id is not None and body["id"] != server_id)
         or not isinstance(body.get("versions"), list)
-        or not all(
-            isinstance(v, dict) and v.get("state") in MCP_STATES
-            for v in body["versions"]
-        )
+        or not all(isinstance(v, dict) and v.get("state") in MCP_STATES for v in body["versions"])
     ):
         raise _invalid()
     return body
@@ -531,11 +426,12 @@ class RegistryClient:
     def __init__(
         self,
         base_url: str,
-        credentials: str,
+        credentials: Credentials,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        **options: Unpack[Options],
     ) -> None:
-        self._http = Transport(base_url, credentials, timeout, transport)
+        self._http = Transport(base_url, credentials, timeout, transport, **options)
 
     async def __aenter__(self) -> Self:
         return self
@@ -587,11 +483,7 @@ class RegistryClient:
         limit: int | None = None,
         end_user_token: str | None = None,
     ) -> dict[str, Any]:
-        params = {
-            k: str(v)
-            for k, v in (("cursor", cursor), ("limit", limit))
-            if v is not None
-        }
+        params = {k: str(v) for k, v in (("cursor", cursor), ("limit", limit)) if v is not None}
         body = await self._http.request(
             "GET", "/v1/servers", params=params, headers=_headers(end_user_token)
         )
@@ -609,9 +501,7 @@ class RegistryClient:
         self, server_id: str, *, end_user_token: str | None = None
     ) -> dict[str, Any]:
         return _mcp_server(
-            await self._http.request(
-                "GET", _server(server_id), headers=_headers(end_user_token)
-            ),
+            await self._http.request("GET", _server(server_id), headers=_headers(end_user_token)),
             server_id,
         )
 
@@ -708,11 +598,12 @@ class McpGatewayClient:
     def __init__(
         self,
         base_url: str,
-        credentials: str,
+        credentials: Credentials,
         timeout: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        **options: Unpack[Options],
     ) -> None:
-        self._http = Transport(base_url, credentials, timeout, transport)
+        self._http = Transport(base_url, credentials, timeout, transport, **options)
 
     async def __aenter__(self) -> Self:
         return self

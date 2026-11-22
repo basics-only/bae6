@@ -18,6 +18,9 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/*.test.ts"
   },
+  "dependencies": {
+    "@bae6/sdk-core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:",
