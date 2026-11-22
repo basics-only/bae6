@@ -165,8 +165,14 @@ export function createS3Source(cfg: S3Config): ObjectSource {
     throw new Error(`${cfg.id}: endpoint must be a bare https:// URL`);
   }
   // Requests are signed with real credentials, so only AWS hosts get them outside development.
-  if (!cfg.allowHttp && !endpoint.hostname.endsWith(".amazonaws.com")) {
-    throw new Error(`${cfg.id}: endpoint is not an AWS host`);
+  // Other AWS customers control hosts like *.execute-api.<region>.amazonaws.com, so only S3's own names qualify.
+  const s3Host = new RegExp(
+    `^s3(-fips)?(\\.dualstack)?\\.${cfg.region}\\.amazonaws\\.com$`,
+  );
+  if (!cfg.allowHttp && !s3Host.test(endpoint.hostname)) {
+    throw new Error(
+      `${cfg.id}: endpoint is not an AWS S3 host for ${cfg.region}`,
+    );
   }
   const limits = { ...DEFAULT_LIMITS, ...cfg.limits };
   const signal = (caller?: AbortSignal) => {
