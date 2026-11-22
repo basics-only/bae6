@@ -29,7 +29,21 @@ async function body(req) {
     raw += chunk;
     if (raw.length > 4096) throw new Error("too large");
   }
-  return JSON.parse(raw || "{}");
+  return raw;
+}
+
+// A client-credentials form has a fixed audience; anything else is the JSON request.
+function clientCredentials(raw) {
+  const aud = process.env.MOCK_OIDC_CLIENT_AUDIENCE;
+  if (!aud) throw new Error("MOCK_OIDC_CLIENT_AUDIENCE is not set");
+  const form = new URLSearchParams(raw);
+  if (form.get("grant_type") !== "client_credentials")
+    throw new Error("unsupported grant_type");
+  return {
+    sub: form.get("client_id") ?? undefined,
+    aud,
+    scope: form.get("scope") ?? undefined,
+  };
 }
 
 createServer(async (req, res) => {
@@ -48,8 +62,15 @@ createServer(async (req, res) => {
       requestId: "mock",
     });
   try {
-    // {sub, aud, scope?, claims?, ttlSeconds?}
-    const { sub, aud, scope, claims = {}, ttlSeconds = 300 } = await body(req);
+    const raw = await body(req);
+    const form = raw !== "" && !raw.trimStart().startsWith("{");
+    const {
+      sub,
+      aud,
+      scope,
+      claims = {},
+      ttlSeconds = 300,
+    } = form ? clientCredentials(raw) : JSON.parse(raw || "{}");
     if (
       typeof sub !== "string" ||
       typeof aud !== "string" ||
@@ -71,7 +92,11 @@ createServer(async (req, res) => {
       .setIssuedAt()
       .setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds)
       .sign(privateKey);
-    send(200, { access_token: token, token_type: "Bearer" });
+    send(200, {
+      access_token: token,
+      token_type: "Bearer",
+      ...(form ? { expires_in: ttlSeconds } : {}),
+    });
   } catch {
     send(400, {
       code: "invalid_request",
