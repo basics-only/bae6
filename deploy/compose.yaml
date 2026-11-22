@@ -22,6 +22,8 @@ services:
       AI_DB_PASSWORD: ${AI_DB_PASSWORD:-dev-only-ai}
       EMBED_DB_PASSWORD: ${EMBED_DB_PASSWORD:-dev-only-embed}
       MCP_DB_PASSWORD: ${MCP_DB_PASSWORD:-dev-only-mcp}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-dev-only-agent}
+      EVAL_DB_PASSWORD: ${EVAL_DB_PASSWORD:-dev-only-eval}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -129,6 +131,7 @@ services:
     environment:
       NODE_ENV: development
       MOCK_OIDC_ISSUER: http://mock-oidc:8080
+      MOCK_OIDC_CLIENT_AUDIENCE: bae6-context-mcp
     ports:
       - "127.0.0.1:8085:8080"
 
@@ -160,7 +163,7 @@ services:
 
   token-minter:
     image: docker.io/curlimages/curl:8.11.1
-    profiles: [context, all]
+    profiles: [ai, context, all]
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -287,6 +290,97 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       mock-oidc: {condition: service_started}
+
+  agent-worker:
+    image: localhost/bae6-ai-agent-worker:dev
+    build:
+      context: ..
+      dockerfile: services/ai/agent-worker/Dockerfile
+    profiles: [ai, all]
+    <<: *health
+    environment:
+      <<: *dev
+      PORT: "8080"
+      BAE6_DATABASE_URL: postgres://agents:${AGENT_DB_PASSWORD:-dev-only-agent}@postgres:5432/agents
+      BAE6_AI_GATEWAY_URL: http://ai-gateway:8080
+      BAE6_WORKER_TOKEN_FILE: /tokens/ai
+      BAE6_AI_ISSUERS: >-
+        [{"issuer":"http://mock-oidc:8080","audience":"bae6-ai-agents","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
+    volumes:
+      - tokens:/tokens:ro
+    ports:
+      - "127.0.0.1:8087:8080"
+    depends_on:
+      postgres: {condition: service_healthy}
+      ai-gateway: {condition: service_healthy}
+      token-minter: {condition: service_healthy}
+
+  eval-worker:
+    image: localhost/bae6-ai-eval-worker:dev
+    build:
+      context: ..
+      dockerfile: services/ai/eval-worker/Dockerfile
+    profiles: [ai, all]
+    <<: *health
+    environment:
+      <<: *dev
+      PORT: "8080"
+      BAE6_DATABASE_URL: postgres://evals:${EVAL_DB_PASSWORD:-dev-only-eval}@postgres:5432/evals
+      BAE6_AI_GATEWAY_URL: http://ai-gateway:8080
+      BAE6_WORKER_TOKEN_FILE: /tokens/ai
+      BAE6_AI_ISSUERS: >-
+        [{"issuer":"http://mock-oidc:8080","audience":"bae6-ai-evals","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
+    volumes:
+      - tokens:/tokens:ro
+    ports:
+      - "127.0.0.1:8088:8080"
+    depends_on:
+      postgres: {condition: service_healthy}
+      ai-gateway: {condition: service_healthy}
+      token-minter: {condition: service_healthy}
+
+  mcp-gateway:
+    image: localhost/bae6-context-mcp-gateway:dev
+    build:
+      context: ..
+      dockerfile: services/context/mcp-gateway/Dockerfile
+    profiles: [context, all]
+    <<: *health
+    environment:
+      <<: *dev
+      PORT: "8080"
+      BAE6_MCP_ALLOW_INSECURE_ENDPOINTS: "true"
+      BAE6_MCP_REGISTRY_URL: http://mcp-registry:8080
+      BAE6_MCP_REGISTRY_CREDENTIALS: >-
+        {"example":{"tokenUrl":"http://mock-oidc:8080/token","clientId":"mcp-gateway","clientSecret":"dev-only","scope":"mcp:discover"}}
+      BAE6_MCP_ISSUERS: >-
+        [{"issuer":"http://mock-oidc:8080","audience":"bae6-context-mcp-gateway","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
+    ports:
+      - "127.0.0.1:8089:8080"
+    depends_on:
+      mcp-registry: {condition: service_healthy}
+      mock-oidc: {condition: service_started}
+
+  console:
+    image: localhost/bae6-console:dev
+    build:
+      context: ..
+      dockerfile: services/console/Dockerfile
+    profiles: [console]
+    environment:
+      ORIGIN: ${CONSOLE_ORIGIN:-http://localhost:8091}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8091/auth/callback}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      BAE6_AUTHZ_URL: http://authz-api:8080
+      BAE6_AI_URL: http://ai-gateway:8080
+      BAE6_EVAL_URL: http://eval-worker:8080
+      BAE6_AGENT_URL: http://agent-worker:8080
+      BAE6_MCP_REGISTRY_URL: http://mcp-registry:8080
+    ports:
+      - "127.0.0.1:8091:8080"
 
 volumes:
   pgdata:
