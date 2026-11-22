@@ -13,7 +13,10 @@
 | [0009](0009-feedback-and-harness-registry.md) | Feedback and harness versioning |
 | [0010](0010-operator-console.md) | Operator console |
 | [0011](0011-usage-analytics-and-task-tags.md) | Usage analytics and task tags |
+| [0012](0012-usage-analytics-at-scale.md) | Usage analytics at scale |
 | [0013](0013-cloud-credentials-and-onboarding.md) | Cloud credentials and onboarding |
+| [0014](0014-model-routing.md) | Automatic model routing |
+| [0015](0015-huggingface-provider.md) | Hugging Face provider for open models |
 | [0016](0016-single-monorepo.md) | Single monorepo |
 
 Product-internal decisions live under `docs/<product>/`. Copy `0000-template.md` for a new one.
