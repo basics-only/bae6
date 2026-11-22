@@ -213,6 +213,16 @@ test("an expired or destroyed session is no session", () => {
   assert.equal(store.get(again), null);
 });
 
+test("expired sessions nobody asks for again are dropped when a new one is created", () => {
+  let now = 1000;
+  const store = createSessionStore(() => now);
+  store.create({ subject: "a", accessToken: "t", expiresAt: 2000 });
+  store.create({ subject: "b", accessToken: "t", expiresAt: 2000 });
+  now = 2000;
+  store.create({ subject: "c", accessToken: "t", expiresAt: 9000 });
+  assert.equal(store.size(), 1);
+});
+
 test("a mutation from another origin is refused, reads are not", () => {
   const own = "https://console.example";
   assert.equal(crossSiteMutation("POST", "https://evil.example", own), true);
