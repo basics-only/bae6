@@ -1,8 +1,8 @@
 import {
   type ClientOptions,
+  Transport as CoreTransport,
   parseJson,
   type Send,
-  Transport as CoreTransport,
 } from "@bae6/sdk-core";
 
 /** `timeoutMs` is per attempt and defaults to 10000; raise it above the source's query timeout. */
