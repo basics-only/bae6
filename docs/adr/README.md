@@ -14,5 +14,6 @@
 | [0010](0010-operator-console.md) | Operator console |
 | [0011](0011-usage-analytics-and-task-tags.md) | Usage analytics and task tags |
 | [0013](0013-cloud-credentials-and-onboarding.md) | Cloud credentials and onboarding |
+| [0016](0016-single-monorepo.md) | Single monorepo |
 
-Product-internal decisions live in each product repo. Copy `0000-template.md` for a new one.
+Product-internal decisions live under `docs/<product>/`. Copy `0000-template.md` for a new one.

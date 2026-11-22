@@ -62,7 +62,7 @@ OPENFGA_API_URL=http://localhost:8081 \
 ```
 
 `<org>` is the `organization` of that issuer in `BAE6_OIDC_ISSUERS`: roles are only read on
-the caller's own organization ([contracts ADR 0002](https://github.com/basics-only/bae6-contracts/blob/main/docs/adr/0002-tenant-boundaries.md)).
+the caller's own organization ([ADR 0002](../../adr/0002-tenant-boundaries.md)).
 
 `--admin <subject>` names a subject directly instead (a plain identifier, such as an
 already-computed hash). The command creates the `bae6-admin` store, writes and validates the model, writes the
