@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - packages/integrations/*
+  - services/*
+  - sdk/typescript
+onlyBuiltDependencies:
+  - esbuild
