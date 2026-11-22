@@ -4,7 +4,7 @@ COMPOSE = $(CONTAINER_RUNTIME) compose -f deploy/compose.yaml --profile $(PROFIL
 
 export BAE6_CONTAINER_RUNTIME = $(CONTAINER_RUNTIME)
 
-.PHONY: install format lint typecheck test model-test migrate integration up down
+.PHONY: install format lint typecheck test model-test migrate integration demo up down
 
 install:
 	pnpm install --frozen-lockfile
@@ -34,6 +34,9 @@ migrate:
 integration:
 	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8180 pnpm --filter @bae6/authz-api test:integration
 	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8180 pnpm --filter @bae6/authz test:integration
+
+demo:
+	node --test deploy/integration/demo.test.mjs deploy/integration/workers.test.mjs
 
 up:
 	$(COMPOSE) up --build -d --wait
