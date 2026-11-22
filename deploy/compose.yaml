@@ -161,6 +161,14 @@ services:
         "example/security.txt":"Production access requires a ticket and a second reviewer.",
         "other/private.txt":"Not part of the example organization."}}
 
+  mock-mcp:
+    image: localhost/bae6-mock-mcp:dev
+    build:
+      context: ./dev/mock-mcp
+    profiles: [context, all]
+    environment:
+      NODE_ENV: development
+
   token-minter:
     image: docker.io/curlimages/curl:8.11.1
     profiles: [ai, context, all]
@@ -303,6 +311,7 @@ services:
       PORT: "8080"
       BAE6_DATABASE_URL: postgres://agents:${AGENT_DB_PASSWORD:-dev-only-agent}@postgres:5432/agents
       BAE6_AI_GATEWAY_URL: http://ai-gateway:8080
+      BAE6_MODEL_MAX_OUTPUT_TOKENS: "512"
       BAE6_WORKER_TOKEN_FILE: /tokens/ai
       BAE6_AI_ISSUERS: >-
         [{"issuer":"http://mock-oidc:8080","audience":"bae6-ai-agents","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
@@ -350,6 +359,7 @@ services:
       <<: *dev
       PORT: "8080"
       BAE6_MCP_ALLOW_INSECURE_ENDPOINTS: "true"
+      BAE6_MCP_CACHE_TTL_MS: "1000"
       BAE6_MCP_REGISTRY_URL: http://mcp-registry:8080
       BAE6_MCP_REGISTRY_CREDENTIALS: >-
         {"example":{"tokenUrl":"http://mock-oidc:8080/token","clientId":"mcp-gateway","clientSecret":"dev-only","scope":"mcp:discover"}}

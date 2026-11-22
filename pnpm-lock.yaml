@@ -68,6 +68,8 @@ importers:
 
   deploy/dev/mock-cloud: {}
 
+  deploy/dev/mock-mcp: {}
+
   deploy/dev/mock-oidc:
     dependencies:
       jose:
