@@ -1,0 +1,37 @@
+# 0005 — Versioned model lifecycle
+
+## Decision
+
+An application's authorization model changes only through `POST /v1/models`, and only
+if the caller's own assertions hold:
+
+1. The submitted DSL and optional tuples are loaded into a **scratch store**
+   (`bae6-authz-validate-<uuid>`), and every assertion is checked there at higher consistency.
+   The application's store and binding are not touched. Assertions must include at least
+   one allow and one deny, so a model cannot be approved on "it permits things" alone.
+2. Only if every assertion holds is a **new immutable model** written to the application's
+   store and bound (ADR 0002: a request never resolves "latest").
+3. Binding runs in one transaction under a lock on the application row: deactivate the
+   old binding, activate the new one, write the audit event (`models.bind`, with
+   `before`/`after` model IDs). If the audit write fails, the binding does not change.
+
+`POST /v1/models/rollback` re-binds a model the application was bound to before
+(`models.rollback`). Earlier `model_bindings` rows are kept, so history is the table
+itself. A model bae6-authz has never bound to the application cannot be restored.
+
+The submission may be a full `model` or an `extension` composed after the bae6-authz core; either
+must keep every core type unchanged, else 422 `core_violation` (ADR 0011).
+
+Scope: `models:write`, plus the application allow-list, decided before the application is
+looked up (403, not 404). Other applications are never touched.
+
+## Consequences and limits
+
+- Tuples already in the application's store are not re-validated against the new model;
+  OpenFGA ignores tuples that no longer fit it, so a model that drops a relation silently
+  stops honouring those tuples. The caller's assertions are what guard this.
+- A failed scratch-store delete leaves an inert `bae6-authz-validate-*` store. shortcut: add a
+  janitor if they accumulate.
+- A model written to the application's store whose binding then fails stays unbound and
+  inert.
+- Like other admin routes this uses token scopes, not the OpenFGA admin model (ADR 0004).

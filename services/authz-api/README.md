@@ -1,0 +1,70 @@
+# bae6-authz
+
+Organization-wide authorization control plane built on [OpenFGA](https://openfga.dev).
+See [docs/architecture.md](docs/architecture.md) and [AGENTS.md](AGENTS.md).
+
+## Quickstart
+
+Requires Node 22+, pnpm 10, uv, and Docker.
+
+```sh
+cp .env.example .env     # then replace the placeholder passwords
+make install
+make test
+make up                  # postgres, openfga, api (:8080), console (:3000)
+curl localhost:8080/health/live
+make down
+```
+
+To go on to your first allowed check, follow [docs/quickstart.md](docs/quickstart.md).
+
+## Documentation
+
+| Page | For |
+| --- | --- |
+| [docs/quickstart.md](docs/quickstart.md) | Clone to first allowed check |
+| [docs/architecture.md](docs/architecture.md) | Components, a check end to end, revocation freshness |
+| [docs/operations.md](docs/operations.md) | Deploy, scale, backup, model migration, rollback, incidents |
+| [docs/security.md](docs/security.md) | Threat model and the test behind each mitigation |
+| [docs/decisions](docs/decisions/README.md) | Architecture decision records |
+| [examples](examples/README.md) | FastAPI, Express and Databricks examples |
+
+## SDKs
+
+Both SDKs are thin clients with the same behavior; `tests/conformance` holds the
+cases they share. A check is made for an end user, whose verified token you pass
+per call; the workload's own token is the client's `credentials`.
+
+```ts
+import { Authz } from "@bae6/authz";
+
+const authz = new Authz({ baseUrl, credentials, application: "crm" });
+const { allowed } = await authz.check({ action: "read", resource: "document:d1", endUserToken });
+const { results } = await authz.batchCheck(
+  [{ action: "read", resource: "document:d1" }, { action: "delete", resource: "document:d1" }],
+  { endUserToken },
+);
+```
+
+```python
+async with Authz(base_url, credentials, "crm") as authz:
+    decision = await authz.check(action="read", resource="document:d1", end_user_token=token)
+    batch = await authz.batch_check([Check("read", "document:d1")], end_user_token=token)
+```
+
+An undecidable check never reads as an allow: `check` raises
+`AuthzIndeterminateError`, and a batch item bae6-authz could not decide has status
+`indeterminate` and `allowed` false. Treat any exception as a deny. The SDKs do
+not retry, and they do not follow redirects.
+
+## Layout
+
+| Path | Purpose |
+|------|---------|
+| `apps/api` | Central HTTP API (TypeScript, Node) |
+| `apps/console` | SvelteKit administration console |
+| `sdks/python`, `sdks/typescript` | Client SDKs |
+| `models/openfga` | Version-controlled authorization models |
+| `contracts` | Shared API contracts |
+| `deploy` | Docker Compose and deployment config |
+| `docs/decisions` | Architecture decision records |

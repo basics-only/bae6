@@ -1,0 +1,84 @@
+import { resolve } from "node:path";
+import { parseArgs } from "node:util";
+import { bootstrapAdmin, workloadSubject } from "./bootstrap.js";
+import { validateExtension, writeExtension } from "./extension.js";
+import { validateModel, writeModel } from "./model.js";
+
+const usage = `usage:
+  pnpm model validate <model.fga>
+  pnpm model validate-extension <extension.fga>   (core + extension, both suites)
+  pnpm model write-extension <extension.fga> --store-id <id> [--api-url <url>]
+  pnpm model write <model.fga> --store-id <id> [--api-url <url>]   (default OPENFGA_API_URL)
+  pnpm model bootstrap-admin --organization <org> (--issuer <iss> --workload <id> | --admin <subject>) [--api-url <url>]   (default OPENFGA_API_URL)`;
+
+const { positionals, values } = parseArgs({
+  allowPositionals: true,
+  options: {
+    "store-id": { type: "string" },
+    "api-url": { type: "string" },
+    admin: { type: "string" },
+    organization: { type: "string" },
+    issuer: { type: "string" },
+    workload: { type: "string" },
+  },
+});
+const [command, relativeFile] = positionals;
+
+if (command === "bootstrap-admin") {
+  // An oidc workload is named by the hash of its issuer and client ID, as the API computes it.
+  const named = Boolean(values.issuer && values.workload);
+  const partial = Boolean(values.issuer || values.workload) && !named;
+  const admin =
+    values.admin ??
+    (named
+      ? workloadSubject(values.issuer ?? "", values.workload ?? "")
+      : undefined);
+  const apiUrl = values["api-url"] ?? process.env.OPENFGA_API_URL;
+  const conflict = values.admin !== undefined && (named || partial);
+  const organization = values.organization;
+  if (!admin || !organization || !apiUrl || partial || conflict) {
+    console.error(usage);
+    process.exit(2);
+  }
+  const { storeId, modelId } = await bootstrapAdmin(
+    resolve(import.meta.dirname, "../../models/openfga/bae6-admin.fga"),
+    { apiUrl, admin, organization },
+  );
+  console.log(`BAE6_ADMIN_STORE_ID=${storeId}`);
+  console.log(`BAE6_ADMIN_MODEL_ID=${modelId}`);
+  process.exit(0);
+}
+
+if (!relativeFile) {
+  console.error(usage);
+  process.exit(2);
+}
+// pnpm runs scripts from the package dir; INIT_CWD is where the user invoked it.
+const modelFile = resolve(process.env.INIT_CWD ?? process.cwd(), relativeFile);
+
+if (command === "validate") {
+  validateModel(modelFile);
+  console.log("ok");
+} else if (command === "write") {
+  const storeId = values["store-id"];
+  const apiUrl = values["api-url"] ?? process.env.OPENFGA_API_URL;
+  if (!storeId || !apiUrl) {
+    console.error(usage);
+    process.exit(2);
+  }
+  console.log(await writeModel(modelFile, { apiUrl, storeId }));
+} else if (command === "validate-extension") {
+  validateExtension(modelFile);
+  console.log("ok");
+} else if (command === "write-extension") {
+  const storeId = values["store-id"];
+  const apiUrl = values["api-url"] ?? process.env.OPENFGA_API_URL;
+  if (!storeId || !apiUrl) {
+    console.error(usage);
+    process.exit(2);
+  }
+  console.log(await writeExtension(modelFile, { apiUrl, storeId }));
+} else {
+  console.error(usage);
+  process.exit(2);
+}

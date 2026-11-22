@@ -1,0 +1,13 @@
+{
+  "name": "@bae6/authz-example-express",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@bae6/authz": "workspace:*",
+    "express": "5.3.0"
+  }
+}

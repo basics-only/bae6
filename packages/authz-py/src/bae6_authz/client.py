@@ -1,0 +1,294 @@
+import asyncio
+from collections.abc import Sequence
+from dataclasses import dataclass
+from types import TracebackType
+from typing import Literal, Self
+
+import httpx
+
+
+class AuthzError(Exception):
+    def __init__(self, message: str, request_id: str | None = None) -> None:
+        super().__init__(message)
+        self.request_id = request_id
+
+
+class AuthzApiError(AuthzError):
+    """authz answered with something other than a decision."""
+
+    def __init__(
+        self, status: int, code: str | None, message: str, request_id: str | None = None
+    ) -> None:
+        super().__init__(message, request_id)
+        self.status = status
+        self.code = code
+
+
+class AuthzAuthError(AuthzApiError):
+    """401 or 403: bad workload or end-user credentials, or a missing scope."""
+
+
+class AuthzValidationError(AuthzApiError):
+    """400: authz rejected the request."""
+
+
+class AuthzIndeterminateError(AuthzError):
+    """authz could not decide (for example its authorization backend timed out)."""
+
+    def __init__(self, code: str | None, request_id: str) -> None:
+        detail = f" ({code})" if code else ""
+        super().__init__(f"authz could not decide{detail}; treat as denied", request_id)
+        self.code = code
+
+
+class AuthzTransportError(AuthzError):
+    """authz was not reached or did not answer."""
+
+
+class AuthzTimeoutError(AuthzTransportError):
+    pass
+
+
+@dataclass(frozen=True)
+class Check:
+    action: str
+    resource: str
+
+
+Consistency = Literal["minimize_latency", "higher_consistency"]
+
+
+@dataclass(frozen=True)
+class Decision:
+    """`allowed` is true only for `allow`; an undecidable check raises instead."""
+
+    allowed: bool
+    status: Literal["allow", "deny"]
+    request_id: str
+    model_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ItemDecision:
+    allowed: bool
+    status: Literal["allow", "deny", "indeterminate"]
+
+
+@dataclass(frozen=True)
+class BatchDecision:
+    request_id: str
+    # One per input check, in input order.
+    results: list[ItemDecision]
+    model_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ObjectPage:
+    request_id: str
+    # Ascending `type:id` objects the user holds the action on.
+    objects: list[str]
+    model_id: str | None = None
+    # Pass as `cursor` for the next page; None on the last page.
+    next_cursor: str | None = None
+
+
+def _str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _http_error(status: int, parsed: object) -> AuthzApiError:
+    body = parsed if isinstance(parsed, dict) else {}
+    error_type = (
+        AuthzValidationError
+        if status == 400
+        else AuthzAuthError
+        if status in (401, 403)
+        else AuthzApiError
+    )
+    return error_type(
+        status,
+        _str(body.get("code")),
+        _str(body.get("message")) or f"authz returned HTTP {status}",
+        _str(body.get("requestId")),
+    )
+
+
+def _invalid_response() -> AuthzApiError:
+    return AuthzApiError(200, "invalid_response", "authz returned an unusable response")
+
+
+def _item_decision(status: str | None) -> ItemDecision:
+    # Anything that is not `allow` is not an allow; `indeterminate` is kept apart.
+    if status == "allow":
+        return ItemDecision(True, "allow")
+    if status is None or status == "indeterminate":
+        return ItemDecision(False, "indeterminate")
+    return ItemDecision(False, "deny")
+
+
+class Authz:
+    """Async authz client. Use `async with Authz(...) as authz` so connections are closed."""
+
+    def __init__(
+        self, base_url: str, credentials: str, application: str, timeout: float = 5.0
+    ) -> None:
+        self._application = application
+        self._timeout = timeout
+        self._http = httpx.AsyncClient(
+            base_url=base_url,
+            headers={"authorization": f"Bearer {credentials}"},
+            # The deadline is asyncio.timeout's, so it covers the whole request.
+            timeout=None,
+            # The end-user token must not follow a redirect to another host.
+            follow_redirects=False,
+        )
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def check(
+        self,
+        *,
+        action: str,
+        resource: str,
+        end_user_token: str,
+        consistency: Consistency | None = None,
+    ) -> Decision:
+        """Whether the end user holds `action` on `resource`.
+
+        `consistency="higher_consistency"` sees revocations already committed, at more cost;
+        unset uses authz's default, `minimize_latency`, which may serve a briefly cached answer.
+        Raises AuthzIndeterminateError when authz cannot decide; never returns allow then.
+        """
+        payload: dict[str, object] = {
+            "application": self._application,
+            "relation": action,
+            "object": resource,
+        }
+        if consistency is not None:
+            payload["consistency"] = consistency
+        body = await self._post("/v1/check", end_user_token, payload)
+        status = _str(body.get("status"))
+        request_id = _str(body.get("requestId"))
+        if status is None or request_id is None:
+            raise _invalid_response()
+        if status == "indeterminate":
+            raise AuthzIndeterminateError(_str(body.get("code")), request_id)
+        allowed = status == "allow"
+        return Decision(
+            allowed=allowed,
+            status="allow" if allowed else "deny",
+            request_id=request_id,
+            model_id=_str(body.get("modelId")),
+        )
+
+    async def batch_check(
+        self,
+        checks: Sequence[Check],
+        *,
+        end_user_token: str,
+        consistency: Consistency | None = None,
+    ) -> BatchDecision:
+        """At most 100 checks (authz may allow fewer). An indeterminate item does not affect the rest.
+
+        `consistency` applies to every check in the batch, as in `check`.
+        """
+        payload: dict[str, object] = {
+            "application": self._application,
+            "checks": [
+                {"correlationId": str(i), "relation": c.action, "object": c.resource}
+                for i, c in enumerate(checks)
+            ],
+        }
+        if consistency is not None:
+            payload["consistency"] = consistency
+        body = await self._post("/v1/batch-check", end_user_token, payload)
+        request_id = _str(body.get("requestId"))
+        results = body.get("results")
+        if request_id is None or not isinstance(results, list):
+            raise _invalid_response()
+        by_id: dict[str, str | None] = {}
+        for r in results:
+            if isinstance(r, dict) and isinstance(r.get("correlationId"), str):
+                # A repeated ID is ambiguous, so neither answer is used.
+                repeated = r["correlationId"] in by_id
+                by_id[r["correlationId"]] = None if repeated else _str(r.get("status"))
+        return BatchDecision(
+            request_id=request_id,
+            model_id=_str(body.get("modelId")),
+            results=[_item_decision(by_id.get(str(i))) for i in range(len(checks))],
+        )
+
+    async def list_objects(
+        self,
+        *,
+        action: str,
+        type: str,
+        end_user_token: str,
+        limit: int | None = None,
+        cursor: str | None = None,
+        consistency: Consistency | None = None,
+    ) -> ObjectPage:
+        """One page of the `type` objects the end user holds `action` on.
+
+        Raises AuthzIndeterminateError when authz cannot list; never returns a partial guess then.
+        """
+        payload: dict[str, object] = {
+            "application": self._application,
+            "relation": action,
+            "type": type,
+        }
+        for key, value in (("limit", limit), ("cursor", cursor), ("consistency", consistency)):
+            if value is not None:
+                payload[key] = value
+        body = await self._post("/v1/list-objects", end_user_token, payload)
+        request_id = _str(body.get("requestId"))
+        objects = body.get("objects")
+        if (
+            request_id is None
+            or not isinstance(objects, list)
+            or not all(isinstance(o, str) for o in objects)
+        ):
+            raise _invalid_response()
+        if body.get("code") is not None:
+            raise AuthzIndeterminateError(_str(body.get("code")), request_id)
+        return ObjectPage(
+            request_id=request_id,
+            objects=objects,
+            model_id=_str(body.get("modelId")),
+            next_cursor=_str(body.get("nextCursor")),
+        )
+
+    async def _post(
+        self, path: str, end_user_token: str, payload: dict[str, object]
+    ) -> dict[str, object]:
+        try:
+            async with asyncio.timeout(self._timeout):
+                response = await self._http.post(
+                    path, json=payload, headers={"bae6-end-user-token": end_user_token}
+                )
+        except TimeoutError as e:
+            raise AuthzTimeoutError(f"authz did not answer within {self._timeout} s") from e
+        except httpx.HTTPError as e:
+            # No chained cause: it can quote a header value, i.e. the end-user token.
+            raise AuthzTransportError(f"could not reach authz ({type(e).__name__})") from None
+        try:
+            parsed: object = response.json()
+        except ValueError:
+            parsed = None
+        if response.status_code != 200:
+            raise _http_error(response.status_code, parsed)
+        if not isinstance(parsed, dict):
+            raise _invalid_response()
+        return parsed
