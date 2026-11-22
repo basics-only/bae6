@@ -378,7 +378,7 @@ services:
     build:
       context: ..
       dockerfile: services/console/Dockerfile
-    profiles: [console]
+    profiles: [console, all]
     environment:
       ORIGIN: ${CONSOLE_ORIGIN:-http://localhost:8091}
       OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
