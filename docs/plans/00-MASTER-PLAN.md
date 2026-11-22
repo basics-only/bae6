@@ -5,7 +5,7 @@ Version: 0.1 | Baseline: 2026-11-17 | Status: proposed for implementation
 Build a minimal, open-source, enterprise-ready suite of independently usable primitives for **authorization**, **AI execution**, and **model context**. Replace a monolith without creating a distributed monolith. Support multiple teams, Kubernetes horizontal scaling, and Python + TypeScript clients.
 
 ## Non-negotiables
-1. **Five repos**: `bae6-authz`, `bae6-ai`, `bae6-context`, `bae6-contracts`, `bae6-platform`.
+1. **One repo** (ADR 0016, superseding the original five): products live in `packages/` and `services/` by product, with `contracts/` and `deploy/` alongside.
 2. **Independent deployment**: Each service has separate image, chart, config, lifecycle, storage ownership, scaling and rollback; libraries require no deployment.
 3. **Independent publishing**: Per-module semantic versions and changelogs even inside a multi-package repository; no global lockstep release.
 4. **Optional cross-product integrations**: No mandatory network hop through an unrelated bae6 component. Explicit adapter interfaces and injected dependencies.

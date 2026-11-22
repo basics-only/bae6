@@ -4,7 +4,7 @@ Status: accepted
 Date: 2026-11-17
 
 ## Context
-Five repos, several packages and runtimes per repo, and no global release train
+One repo, several packages and runtimes per repo, and no global release train
 (master plan, non-negotiable 3).
 
 ## Decision

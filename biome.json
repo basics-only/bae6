@@ -10,7 +10,6 @@
       "!**/.venv",
       "!**/*.svelte",
       "!pnpm-lock.yaml",
-      "!_legacy",
       "!contracts/fixtures",
       "!contracts/schemas"
     ]

@@ -1,6 +1,8 @@
 # bae6 coding agent operating guide
 
-You are implementing bae6 according to the plans in [bae6-contracts/docs/plans](https://github.com/basics-only/bae6-contracts/tree/main/docs/plans) (start with `00-MASTER-PLAN.md`) and the relevant service plan. No scope expansion without an ADR.
+Monorepo: `contracts/`, `packages/<product>/{ts,py}` (SDKs), `services/<product>/*`, `deploy/`, `docs/`. Verify locally with `make lint typecheck test`.
+
+You are implementing bae6 according to `docs/plans/00-MASTER-PLAN.md` and the relevant plan. No scope expansion without an ADR.
 
 ## Git
 - Use a main, dev paradigm for our branches. 
@@ -8,7 +10,7 @@ You are implementing bae6 according to the plans in [bae6-contracts/docs/plans](
 - Use milestones in github to denote epics
 
 ## Agent working method
-1. Read existing repository code, contracts and ADRs before editing. The existing riz work should be preserved when evolving `bae6-authz`.
+1. Read existing repository code, contracts and ADRs before editing.
 2. Define/confirm API schema and its compatibility implications before implementing a new public endpoint.
 3. Plan the smallest vertical slice with tests and measure dependency footprint.
 4. Implement strict identity verification, tenant isolation, fail-closed policies and bounded runtime behavior from the first slice.
@@ -25,12 +27,10 @@ You are implementing bae6 according to the plans in [bae6-contracts/docs/plans](
 - No unbounded retries, queues, file sizes, token generation, tools or database results.
 - No placeholder security checks that accept all identities or permissions.
 - Avoid infrastructure/SDK dependencies when standard language facilities suffice.
+- Avoid comments and too much documentation in markdown files. Just make the code readable. I will ask for docs if needed.
 
 ## Completion format
 - Report implemented endpoints/modules, exact test commands and outcomes, security/reliability edge cases covered, measured footprint, open risks, follow-on issues and version/compatibility notes.
-
-## Reference bae6-authz code
-- Look to https://github.com/quentin-auster/riz for the bae6-authz service. We should work off of that. 
 
 ## Typescript
 - use pnpm for package management and testing
