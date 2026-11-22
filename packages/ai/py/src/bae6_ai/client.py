@@ -240,9 +240,10 @@ class Ai:
 
     async def models(self, *, end_user_token: str | None = None) -> list[dict[str, Any]]:
         body = await self._call("GET", "/v1/models", end_user_token, None, None)
-        if not isinstance(body.get("data"), list):
+        data = body.get("data")
+        if not isinstance(data, list):
             raise _invalid_response()
-        return body["data"]
+        return data
 
     async def usage(
         self,
@@ -256,9 +257,10 @@ class Ai:
         Datetimes must be timezone-aware; a naive one has no unambiguous instant.
         """
         body = await self._call("GET", "/v1/usage", end_user_token, None, None, _range(start, end))
-        if not isinstance(body.get("data"), list):
+        data = body.get("data")
+        if not isinstance(data, list):
             raise _invalid_response()
-        return body["data"]
+        return data
 
     async def budget(self, *, end_user_token: str | None = None) -> dict[str, Any]:
         """Money values are decimal strings in the price book's currency."""
@@ -270,9 +272,10 @@ class Ai:
     async def credentials(self, *, end_user_token: str | None = None) -> list[dict[str, Any]]:
         """Where each configured provider's cloud credentials come from, never the credentials."""
         body = await self._call("GET", "/v1/credentials", end_user_token, None, None)
-        if not isinstance(body.get("data"), list):
+        data = body.get("data")
+        if not isinstance(data, list):
             raise _invalid_response()
-        return body["data"]
+        return data
 
     async def feedback(
         self,
@@ -652,9 +655,10 @@ class Ai:
 
     async def _list_tags(self, kind: str, end_user_token: str | None) -> list[dict[str, Any]]:
         body = await self._call("GET", f"/v1/{kind}", end_user_token, None, None)
-        if not isinstance(body.get("data"), list):
+        data = body.get("data")
+        if not isinstance(data, list):
             raise _invalid_response()
-        return body["data"]
+        return data
 
     async def _put_tag(
         self, kind: str, id: str, name: str, end_user_token: str | None

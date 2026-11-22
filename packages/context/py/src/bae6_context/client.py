@@ -370,11 +370,12 @@ class EmbedClient:
         body = await self._http.request(
             "POST", f"{_collection(collection_id)}/search", body=payload
         )
-        if not isinstance(body, dict) or not isinstance(body.get("hits"), list):
+        hits = body.get("hits") if isinstance(body, dict) else None
+        if not isinstance(hits, list):
             raise _invalid()
-        if not all(isinstance(h, dict) and isinstance(h.get("chunkId"), str) for h in body["hits"]):
+        if not all(isinstance(h, dict) and isinstance(h.get("chunkId"), str) for h in hits):
             raise _invalid()
-        return body["hits"]
+        return hits
 
     async def delete_document(self, collection_id: str, key: str) -> None:
         """Removes the key from the index only; the source object is untouched."""
