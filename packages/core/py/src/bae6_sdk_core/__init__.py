@@ -5,6 +5,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypedDict
+from urllib.parse import urlencode
 
 import httpx
 
@@ -112,6 +113,7 @@ class Transport:
         path: str,
         *,
         body: Any = None,
+        form: Mapping[str, str] | None = None,
         headers: dict[str, str] | None = None,
         params: Params = None,
         idempotency_key: str | None = None,
@@ -121,6 +123,7 @@ class Transport:
             method,
             path,
             body=body,
+            form=form,
             headers=headers,
             params=params,
             idempotency_key=idempotency_key,
@@ -133,11 +136,15 @@ class Transport:
         path: str,
         *,
         body: Any = None,
+        form: Mapping[str, str] | None = None,
         headers: dict[str, str] | None = None,
         params: Params = None,
         idempotency_key: str | None = None,
     ) -> httpx.Response:
-        """Any 2xx response; retries idempotent requests on 502/503/504, timeouts and dropped connections."""
+        """Any 2xx response; retries idempotent requests on 502/503/504, timeouts and dropped connections.
+
+        `form` is sent as application/x-www-form-urlencoded instead of a JSON `body`.
+        """
         idempotent = method == "GET" or idempotency_key is not None
         attempts = self._max_retries + 1 if idempotent else 1
         extra = dict(headers or {})
@@ -148,7 +155,7 @@ class Transport:
             attempt += 1
             last = attempt == attempts
             try:
-                response = await self._once(method, path, body, extra, params, attempt)
+                response = await self._once(method, path, body, extra, params, attempt, form)
             except _Network as e:
                 if last:
                     raise e.error from None
@@ -196,20 +203,25 @@ class Transport:
         extra: dict[str, str],
         params: Params,
         attempt: int,
+        form: Mapping[str, str] | None = None,
     ) -> tuple[httpx.Request, RequestInfo]:
         token = self._credentials() if callable(self._credentials) else self._credentials
         if isinstance(token, Awaitable):
             token = await token
         if token == "":
             raise ValueError("credentials must not be empty")
-        request = self._http.build_request(
-            method,
-            path,
-            content=None if body is None else json.dumps(body).encode(),
-            params=params,
+        content = (
+            urlencode(form).encode()
+            if form is not None
+            else None
+            if body is None
+            else json.dumps(body).encode()
         )
+        request = self._http.build_request(method, path, content=content, params=params)
         request.headers["authorization"] = f"Bearer {token}"
-        if body is not None:
+        if form is not None:
+            request.headers["content-type"] = "application/x-www-form-urlencoded"
+        elif body is not None:
             request.headers["content-type"] = "application/json"
         for key, value in extra.items():
             request.headers[key] = value
@@ -248,8 +260,9 @@ class Transport:
         extra: dict[str, str],
         params: Params,
         attempt: int,
+        form: Mapping[str, str] | None = None,
     ) -> httpx.Response:
-        request, info = await self._prepare(method, path, body, extra, params, attempt)
+        request, info = await self._prepare(method, path, body, extra, params, attempt, form)
         started = time.perf_counter()
         try:
             async with asyncio.timeout(self._timeout):

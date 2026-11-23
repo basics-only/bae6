@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 members = [
     "authz-example-fastapi",
     "bae6-ai",
+    "bae6-authn",
     "bae6-authz",
     "bae6-context",
     "bae6-sdk-core",
@@ -88,6 +89,21 @@ dev = [
 ]
 
 [[package]]
+name = "bae6-authn"
+version = "0.0.0"
+source = { editable = "packages/authn/py" }
+dependencies = [
+    { name = "bae6-sdk-core" },
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bae6-sdk-core", editable = "packages/core/py" },
+    { name = "httpx", specifier = ">=0.28.1" },
+]
+
+[[package]]
 name = "bae6-authz"
 version = "0.0.0"
 source = { editable = "packages/authz/py" }
@@ -160,6 +176,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "bae6-ai" },
+    { name = "bae6-authn" },
     { name = "bae6-authz" },
     { name = "bae6-context" },
     { name = "bae6-sdk-core" },
@@ -173,6 +190,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "bae6-ai", editable = "packages/ai/py" },
+    { name = "bae6-authn", editable = "packages/authn/py" },
     { name = "bae6-authz", editable = "packages/authz/py" },
     { name = "bae6-context", editable = "packages/context/py" },
     { name = "bae6-sdk-core", editable = "packages/core/py" },
