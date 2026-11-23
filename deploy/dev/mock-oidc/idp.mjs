@@ -463,8 +463,7 @@ export async function createIdp({ baseUrl, publicUrl = baseUrl, config }) {
   }
 
   return {
-    realms,
-    /** Returns false when the path is not one of the provider mocks. */
+    // Returns false when the path is not one of the provider mocks.
     async handle(req, res, url) {
       const g = GRAPH.exec(url.pathname);
       const route = routes.get(url.pathname);
