@@ -47,11 +47,40 @@ services:
       <<: *dev
       BAE6_AUTHN_DATABASE_URL: postgres://authn:${AUTHN_DB_PASSWORD:-dev-only-authn}@postgres:5432/authn
       BAE6_AUTHN_SECRETS_DIR: /run/secrets/authn
+      BAE6_AUTHN_KEYS_DIR: /run/secrets/authn-keys
       BAE6_AUTHN_TENANT_HOSTS: acme.bae6.localhost=acme
+      BAE6_AUTHN_ISSUER: http://authn:8080
+      BAE6_AUTHN_AUDIENCES: bae6-ai,data-api,embed-api,mcp-gateway,mcp-registry
+      BAE6_AUTHN_SIGNING_KEYS: dev-signing.pem
+      BAE6_AUTHN_SESSION_CLIENTS: console
+    volumes:
+      - authn-keys:/run/secrets/authn-keys:ro
     ports:
       - "127.0.0.1:8092:8080"
     depends_on:
       postgres: {condition: service_healthy}
+      authn-keys: {condition: service_completed_successfully}
+
+  authn-keys:
+    image: localhost/bae6-authn-api:dev
+    profiles: [authn, all]
+    user: "0"
+    command:
+      - node
+      - -e
+      - |
+        const fs = require("node:fs");
+        const crypto = require("node:crypto");
+        const write = (name, make) => {
+          const path = `/keys/$${name}`;
+          if (!fs.existsSync(path)) fs.writeFileSync(path, make(), { mode: 0o600 });
+          fs.chownSync(path, 1000, 1000);
+        };
+        write("dev-signing.pem", () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" })
+          .privateKey.export({ type: "pkcs8", format: "pem" }));
+        write("token-client-console", () => crypto.randomBytes(32).toString("base64url"));
+    volumes:
+      - authn-keys:/keys
 
   openfga-migrate:
     image: openfga/openfga:v1.10.2
@@ -419,3 +448,4 @@ services:
 volumes:
   pgdata:
   tokens:
+  authn-keys:

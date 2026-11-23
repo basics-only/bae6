@@ -1,7 +1,9 @@
 import type { Pool } from "pg";
 import type { Signer } from "./keys.js";
+import { readSession } from "./sessions.js";
 import {
   type Bae6Claims,
+  type MintInput,
   mintToken,
   TokenError,
   verifyToken,
@@ -25,7 +27,9 @@ const CARRIED = [
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 const JWT_TYPE = "urn:ietf:params:oauth:token-type:jwt";
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
+export const SESSION_TOKEN_TYPE = "urn:bae6:params:oauth:token-type:session";
 const TOKEN_TYPES = new Set([JWT_TYPE, ACCESS_TOKEN_TYPE]);
+const SUBJECT_TYPES = new Set([JWT_TYPE, SESSION_TOKEN_TYPE]);
 const MAX_TOKEN_LENGTH = 8192;
 const PARAMS = new Set([
   "grant_type",
@@ -40,16 +44,18 @@ const PARAMS = new Set([
 
 export type OAuthErrorCode =
   | "invalid_request"
+  | "invalid_client"
   | "unsupported_grant_type"
   | "invalid_target";
 
 export class OAuthError extends Error {
-  readonly status = 400;
+  readonly status: 400 | 401;
   constructor(
     readonly error: OAuthErrorCode,
     options?: ErrorOptions,
   ) {
     super(error, options);
+    this.status = error === "invalid_client" ? 401 : 400;
   }
 }
 
@@ -98,7 +104,7 @@ export function parseExchangeRequest(form: URLSearchParams): ExchangeRequest {
     !subjectToken ||
     subjectToken.length > MAX_TOKEN_LENGTH ||
     !subjectTokenType ||
-    !TOKEN_TYPES.has(subjectTokenType) ||
+    !SUBJECT_TYPES.has(subjectTokenType) ||
     !audience ||
     audience.length > 512 ||
     (requested !== undefined && requested !== JWT_TYPE) ||
@@ -143,9 +149,11 @@ async function sessionLive(
   sessionId: string,
 ): Promise<boolean> {
   const { rowCount } = await db.query(
-    `SELECT 1 FROM sessions
-      WHERE tenant_id = $1 AND id = $2 AND principal_id = $3
-        AND revoked_at IS NULL AND expires_at > now()`,
+    `SELECT 1 FROM sessions s
+       JOIN provider_connections c
+         ON c.tenant_id = s.tenant_id AND c.id = s.provider_connection_id
+      WHERE s.tenant_id = $1 AND s.id = $2 AND s.principal_id = $3
+        AND s.revoked_at IS NULL AND s.expires_at > now() AND c.status = 'active'`,
     [tenantId, sessionId, principalId],
   );
   return rowCount === 1;
@@ -190,23 +198,62 @@ export async function exchangeToken(
   const carried = Object.fromEntries(
     CARRIED.filter((c) => subject[c] !== undefined).map((c) => [c, subject[c]]),
   ) as Pick<Bae6Claims, (typeof CARRIED)[number]>;
+  return issue(deps, {
+    ...carried,
+    aud: request.audience,
+    notAfter: subject.exp,
+  });
+}
+
+export async function exchangeSession(
+  deps: ExchangeDeps,
+  request: ExchangeRequest,
+  txn: string,
+): Promise<TokenResponse> {
+  if (
+    request.actorToken !== undefined ||
+    request.subjectTokenType !== SESSION_TOKEN_TYPE
+  )
+    throw new OAuthError("invalid_request");
+  if (!deps.audiences.has(request.audience))
+    throw new OAuthError("invalid_target");
+  const session = await readSession(deps.db, request.subjectToken);
+  if (!session) throw new OAuthError("invalid_request");
+  const { rows } = await deps.db.query<{ orgPath: string[] }>(
+    `SELECT org_path AS "orgPath" FROM principals
+      WHERE tenant_id = $1 AND id = $2 AND status = 'active' AND type = 'user'`,
+    [session.tenantId, session.principalId],
+  );
+  const principal = rows[0];
+  if (!principal) throw new OAuthError("invalid_request");
+  return issue(deps, {
+    aud: request.audience,
+    sub: session.principalId,
+    txn,
+    tenant_id: session.tenantId,
+    org_path: principal.orgPath,
+    principal_type: "user",
+    session_id: session.id,
+    notAfter: Math.floor(session.expiresAt.getTime() / 1000),
+  });
+}
+
+async function issue(
+  deps: ExchangeDeps,
+  input: MintInput,
+): Promise<TokenResponse> {
   let minted: Awaited<ReturnType<typeof mintToken>>;
   try {
-    minted = await mintToken(deps.db, deps.signers, deps.issuer, {
-      ...carried,
-      aud: request.audience,
-      notAfter: subject.exp,
-    });
+    minted = await mintToken(deps.db, deps.signers, deps.issuer, input);
   } catch (err) {
     if (err instanceof TokenError)
       throw new OAuthError("invalid_request", { cause: err });
     throw err;
   }
-  const { token, expiresIn } = minted;
   return {
-    access_token: token,
+    access_token: minted.token,
     issued_token_type: JWT_TYPE,
     token_type: "Bearer",
-    expires_in: expiresIn,
+    expires_in: minted.expiresIn,
   };
 }

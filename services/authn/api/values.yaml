@@ -15,8 +15,15 @@ env:
   BAE6_SHUTDOWN_DELAY_MS: "10000"
   BAE6_AUTHN_DB_POOL_MAX: "10"
   BAE6_AUTHN_SECRETS_DIR: /run/secrets/authn
+  BAE6_AUTHN_KEYS_DIR: /run/secrets/authn-keys
   # Required per deployment: the hosts this replica serves sign-in for, as host=tenant pairs.
   BAE6_AUTHN_TENANT_HOSTS: ""
+  BAE6_AUTHN_ISSUER: ""
+  BAE6_AUTHN_AUDIENCES: ""
+  BAE6_AUTHN_SESSION_CLIENTS: console
+  # Rotate: add the new key here and roll out; once every replica has it, point the active key at it.
+  BAE6_AUTHN_SIGNING_KEYS: ""
+  BAE6_AUTHN_ACTIVE_SIGNING_KEY: ""
 
 envFromSecrets:
   - name: BAE6_AUTHN_DATABASE_URL

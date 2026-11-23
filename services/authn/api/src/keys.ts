@@ -123,6 +123,37 @@ export async function promoteNextKey(
   }
 }
 
+export async function syncKeys(
+  db: Pool,
+  signers: ReadonlyMap<string, Signer>,
+  activeKid: string,
+): Promise<Record<string, string>> {
+  const wanted = signers.get(activeKid);
+  if (!wanted) throw new KeyError(`no signer configured for ${activeKid}`);
+  for (const signer of signers.values())
+    await registerKey(db, signer).catch((err) => {
+      if (!(err instanceof KeyError)) throw err;
+    });
+  const kids = [...signers.keys()];
+  await db.query(
+    `UPDATE signing_keys SET status = 'active'
+      WHERE status = 'next' AND kid = $1
+        AND NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')`,
+    [activeKid],
+  );
+  await promoteNextKey(db, new Map([[activeKid, wanted]])).catch((err) => {
+    if (!(err instanceof KeyError)) throw err;
+  });
+  const { rows } = await db.query<{ kid: string; status: string }>(
+    "SELECT kid, status FROM signing_keys WHERE kid = ANY($1)",
+    [kids],
+  );
+  const status = new Map(rows.map((r) => [r.kid, r.status]));
+  return Object.fromEntries(
+    kids.map((kid) => [kid, status.get(kid) ?? "unpublished"]),
+  );
+}
+
 export async function publishedKeys(db: Pool): Promise<PublicJwk[]> {
   const { rows } = await db.query<{ public_jwk: PublicJwk }>(
     `SELECT public_jwk FROM signing_keys
