@@ -18,3 +18,4 @@ crash.*.log
 *.tfvars
 *.tfvars.json
 *.tfplan
+e2e/orgs/compose.generated.json
