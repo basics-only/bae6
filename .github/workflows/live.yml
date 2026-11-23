@@ -1,0 +1,36 @@
+name: live
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  aws:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: live
+    env:
+      COMPOSE: docker compose -f deploy/compose.yaml -f e2e/live/compose.live.yaml --profile context
+      BAE6_LIVE_BEDROCK_MODEL: ${{ vars.BAE6_LIVE_BEDROCK_MODEL }}
+      BAE6_LIVE_S3_BUCKET: ${{ vars.BAE6_LIVE_S3_BUCKET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.BAE6_LIVE_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.BAE6_LIVE_AWS_REGION }}
+          role-duration-seconds: 3600
+      - run: $COMPOSE up --build -d --wait ai-gateway data-api
+      - run: node --test e2e/live/live.test.mjs
+      - if: failure()
+        run: $COMPOSE logs --no-color --tail 100 ai-gateway data-api
+      - if: always()
+        run: $COMPOSE down
