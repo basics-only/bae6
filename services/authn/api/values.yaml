@@ -1,0 +1,37 @@
+# helm install bae6-authn <bae6-platform checkout>/charts/bae6-service \
+#   -f services/authn/api/values.yaml --set image.digest=sha256:...
+image:
+  repository: ghcr.io/basics-only/bae6-authn-api
+
+replicas: 2
+autoscaling:
+  minReplicas: 2
+  # BAE6_AUTHN_DB_POOL_MAX x maxReplicas must fit the database's connection share.
+  maxReplicas: 6
+
+terminationGracePeriodSeconds: 60
+
+env:
+  BAE6_SHUTDOWN_DELAY_MS: "10000"
+  BAE6_AUTHN_DB_POOL_MAX: "10"
+
+envFromSecrets:
+  - name: BAE6_AUTHN_DATABASE_URL
+    secret: bae6-authn
+    key: database-url
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+networkPolicy:
+  egress:
+    # Postgres only for now; identity-provider egress is added with the OIDC slice.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 5432
