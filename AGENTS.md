@@ -2,7 +2,7 @@
 
 Monorepo: `contracts/`, `packages/<product>/{ts,py}` (SDKs), `services/<product>/*`, `deploy/`, `docs/`. Verify locally with `make lint typecheck test`.
 
-You are implementing bae6 according to `docs/plans/00-MASTER-PLAN.md` and the relevant plan. No scope expansion without an ADR.
+You are implementing bae6 according to `docs/plans/00-MASTER-PLAN.md` and the relevant plan. `docs/plans/10-IDENTITY-FOUNDATION.md` takes priority over other work. No scope expansion without an ADR.
 
 ## Git
 - Use a main, dev paradigm for our branches. 
@@ -20,7 +20,7 @@ You are implementing bae6 according to `docs/plans/00-MASTER-PLAN.md` and the re
 8. Produce a concise PR summary: contract changes, migration impact, new dependencies (why), tests, benchmarks, deployment/rollback implications.
 
 ## Hard constraints
-- Product names are `bae6-authz`, `bae6-ai`, `bae6-context`, `bae6-contracts`, `bae6-platform`; do not use `riz` in new product names.
+- Product names are `bae6-authn`, `bae6-authz`, `bae6-ai`, `bae6-context`, `bae6-contracts`, `bae6-platform`; do not use `riz` in new product names.
 - Never add AWS/GCP providers other than Bedrock/Vertex to ai-core.
 - No mandatory LangChain in ai-core or agent runtime; integrations optional.
 - No unrelated cross-service DB accesses, implicit shared singleton process state, global release train, or runtime dependency on control-plane availability.

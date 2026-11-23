@@ -1,6 +1,8 @@
 # bae6 — Master Engineering Plan
 Version: 0.1 | Baseline: 2026-11-17 | Status: proposed for implementation
 
+Current focus: [10-IDENTITY-FOUNDATION.md](10-IDENTITY-FOUNDATION.md), the authn/authz foundation every service routes through, takes priority over the phases below.
+
 ## Mission
 Build a minimal, open-source, enterprise-ready suite of independently usable primitives for **authorization**, **AI execution**, and **model context**. Replace a monolith without creating a distributed monolith. Support multiple teams, Kubernetes horizontal scaling, and Python + TypeScript clients.
 
