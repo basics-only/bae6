@@ -138,8 +138,11 @@ function asHttp(err: unknown): unknown {
 export function createBffRoutes(deps: BffDeps) {
   const { db } = deps;
 
+  const hostOf = (req: IncomingMessage) =>
+    (req.headers.host ?? "").toLowerCase().replace(/:443$/, "");
+
   function site(req: IncomingMessage) {
-    const host = (req.headers.host ?? "").toLowerCase().replace(/:443$/, "");
+    const host = hostOf(req);
     const tenantId = deps.tenantsByHost.get(host);
     if (!tenantId) throw new HttpError(404, "not_found", "Not found.");
     return { tenantId, origin: `https://${host}` };
@@ -269,8 +272,11 @@ export function createBffRoutes(deps: BffDeps) {
     return s;
   }
 
+  const issuerHost = new URL(deps.issuer).host;
+
   async function bearerCaller(req: IncomingMessage, authorization: string) {
-    const { tenantId } = site(req);
+    const viaIssuer = hostOf(req) === issuerHost;
+    const hostTenant = viaIssuer ? undefined : site(req).tenantId;
     const token = BEARER.exec(authorization)?.[1];
     const unauthenticated = new HttpError(
       401,
@@ -292,8 +298,9 @@ export function createBffRoutes(deps: BffDeps) {
       { id: claims.sub, type: claims.principal_type },
     ];
     if (claims.act) principals.push({ id: claims.act.sub });
+    const tenantId = claims.tenant_id;
     if (
-      claims.tenant_id !== tenantId ||
+      (hostTenant !== undefined && hostTenant !== tenantId) ||
       !(await allActive(db, tenantId, principals)) ||
       (claims.session_id !== undefined &&
         !(await sessionLive(db, tenantId, claims.sub, claims.session_id)))

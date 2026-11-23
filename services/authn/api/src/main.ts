@@ -68,6 +68,10 @@ if (!/^https?:\/\/[^\s/?#]+(\/[^\s/?#]+)*$/.test(issuer))
   throw new Error(
     "BAE6_AUTHN_ISSUER must be an http(s) URL without a trailing slash",
   );
+if (tenantsByHost.has(new URL(issuer).host))
+  throw new Error(
+    "BAE6_AUTHN_ISSUER's host must not also be a BAE6_AUTHN_TENANT_HOSTS host",
+  );
 const audiences = new Set(
   required("BAE6_AUTHN_AUDIENCES")
     .split(",")

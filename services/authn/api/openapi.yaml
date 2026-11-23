@@ -138,6 +138,9 @@ paths:
     get:
       operationId: me
       summary: The signed-in principal. A bearer token must be a bae6 token issued to `bae6-authn`.
+      description: >-
+        Session callers use a tenant host. Bearer callers use either a tenant host, where the
+        token's tenant must be that host's, or the issuer's host, where the token names the tenant.
       security:
         - session: []
         - bearer: []
