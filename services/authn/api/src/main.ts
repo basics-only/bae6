@@ -49,7 +49,7 @@ const sessionTtlSeconds = int(
   MAX_SESSION_TTL_SECONDS,
 );
 const HOST =
-  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:(?!443$)[1-9][0-9]{0,4})?$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const tenantsByHost = new Map(
   required("BAE6_AUTHN_TENANT_HOSTS")
@@ -58,7 +58,7 @@ const tenantsByHost = new Map(
       const [host = "", tenant = "", ...rest] = pair.trim().split("=");
       if (rest.length || !HOST.test(host) || !SLUG.test(tenant))
         throw new Error(
-          "BAE6_AUTHN_TENANT_HOSTS must be host=tenant pairs, e.g. console.acme.example=acme",
+          "BAE6_AUTHN_TENANT_HOSTS must be host[:port]=tenant pairs, e.g. console.acme.example=acme",
         );
       return [host, tenant] as const;
     }),

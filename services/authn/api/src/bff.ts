@@ -139,7 +139,7 @@ export function createBffRoutes(deps: BffDeps) {
   const { db } = deps;
 
   function site(req: IncomingMessage) {
-    const host = (req.headers.host ?? "").toLowerCase();
+    const host = (req.headers.host ?? "").toLowerCase().replace(/:443$/, "");
     const tenantId = deps.tenantsByHost.get(host);
     if (!tenantId) throw new HttpError(404, "not_found", "Not found.");
     return { tenantId, origin: `https://${host}` };

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
+import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import type pg from "pg";
@@ -98,6 +99,7 @@ before(async () => {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const host = `127.0.0.1:${(server.address() as AddressInfo).port}`;
   tenantsByHost.set(host, "acme");
+  tenantsByHost.set("acme.bae6.test", "acme");
   base = `http://${host}`;
   origin = `https://${host}`;
 });
@@ -370,6 +372,35 @@ test(
       },
     );
     assert.equal(other.status, 404);
+  },
+);
+
+test(
+  "a tenant host matches exactly, with the default https port optional",
+  { skip },
+  async () => {
+    const statusFor = (hostHeader: string) =>
+      new Promise<number | undefined>((resolve, reject) =>
+        request(
+          `${base}/auth/providers`,
+          { headers: { host: hostHeader } },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode);
+          },
+        )
+          .on("error", reject)
+          .end(),
+      );
+    assert.equal(await statusFor("acme.bae6.test"), 200);
+    assert.equal(await statusFor("ACME.bae6.test:443"), 200);
+    for (const other of [
+      "acme.bae6.test:1",
+      "acme.bae6.test:0443",
+      "acme.bae6.test:8443",
+      "evil.example:443",
+    ])
+      assert.equal(await statusFor(other), 404, other);
   },
 );
 
