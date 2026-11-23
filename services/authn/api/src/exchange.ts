@@ -80,6 +80,35 @@ export interface ExchangeDeps {
   signers: ReadonlyMap<string, Signer>;
   issuer: string;
   audiences: ReadonlySet<string>;
+  reexchangeTargets: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+export function parseTokenTargets(
+  raw: string,
+  audiences: ReadonlySet<string>,
+): Map<string, Set<string>> {
+  const targets = new Map<string, Set<string>>();
+  for (const entry of raw
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)) {
+    const [caller = "", list = "", ...rest] = entry
+      .split("=")
+      .map((s) => s.trim());
+    const allowed = new Set(list.split("|").map((t) => t.trim()));
+    if (
+      rest.length > 0 ||
+      !audiences.has(caller) ||
+      targets.has(caller) ||
+      allowed.has(caller) ||
+      ![...allowed].every((t) => audiences.has(t))
+    )
+      throw new Error(
+        "BAE6_AUTHN_TOKEN_TARGETS must be caller=target|target entries naming other BAE6_AUTHN_AUDIENCES, each caller once",
+      );
+    targets.set(caller, allowed);
+  }
+  return targets;
 }
 
 export function parseExchangeRequest(form: URLSearchParams): ExchangeRequest {
@@ -179,6 +208,8 @@ export async function exchangeToken(
       throw new OAuthError("invalid_request", { cause: err });
     throw err;
   }
+  if (!deps.reexchangeTargets.get(caller.audience)?.has(request.audience))
+    throw new OAuthError("invalid_target");
   const principals: { id: string; type?: string }[] = [
     { id: subject.sub, type: subject.principal_type },
   ];

@@ -57,6 +57,7 @@ before(async () => {
       signers,
       issuer: ISSUER,
       audiences: new Set(["gateway", "data-api"]),
+      reexchangeTargets: new Map([["gateway", new Set(["data-api"])]]),
       sessionClients: ["console"],
       clientSecret: async (client) =>
         ({ gateway: GATEWAY_SECRET, console: CONSOLE_SECRET })[client],

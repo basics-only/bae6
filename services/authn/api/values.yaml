@@ -21,6 +21,8 @@ env:
   BAE6_AUTHN_ISSUER: ""
   BAE6_AUTHN_AUDIENCES: ""
   BAE6_AUTHN_SESSION_CLIENTS: console
+  # Which services may re-exchange a user's token, and for which audiences, e.g. mcp-gateway=data-api|embed-api. Unlisted services cannot.
+  BAE6_AUTHN_TOKEN_TARGETS: ""
   # Rotate: add the new key here and roll out; once every replica has it, point the active key at it.
   BAE6_AUTHN_SIGNING_KEYS: ""
   BAE6_AUTHN_ACTIVE_SIGNING_KEY: ""
