@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import pg from "pg";
-import { createBffRoutes } from "./bff.js";
+import { AUTHN_AUDIENCE, createBffRoutes } from "./bff.js";
 import { migrate } from "./db/migrate.js";
 import { parseTokenTargets } from "./exchange.js";
 import {
@@ -75,6 +75,10 @@ const audiences = new Set(
 );
 if (audiences.size > 64 || ![...audiences].every((a) => SLUG.test(a)))
   throw new Error("BAE6_AUTHN_AUDIENCES must be up to 64 service slugs");
+if (!audiences.has(AUTHN_AUDIENCE))
+  throw new Error(
+    `BAE6_AUTHN_AUDIENCES must include ${AUTHN_AUDIENCE}, the audience /auth/me bearer tokens need`,
+  );
 
 const reexchangeTargets = parseTokenTargets(
   env.BAE6_AUTHN_TOKEN_TARGETS ?? "",
