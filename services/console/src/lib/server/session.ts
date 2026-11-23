@@ -1,43 +1,46 @@
-import { randomBytes } from "node:crypto";
+import { type Authn, AuthnValidationError } from "@bae6/authn";
+import { decodeJwt } from "jose";
 
+/** The console keeps no sessions: the authn session cookie is the session. */
 export interface Session {
+  /** Never sent to the page; exchanged at authn for per-service tokens. */
+  cookie: string;
   subject: string;
-  /** Held server-side only; forwarded to the authz API, never sent to the browser. */
-  accessToken: string;
-  expiresAt: number;
 }
 
-/**
- * The cookie carries only an opaque random ID.
- * shortcut: in memory, so sessions are lost on restart and not shared between replicas;
- * move to a shared store before running more than one console replica.
- */
-export function createSessionStore(now: () => number = Date.now) {
-  const sessions = new Map<string, Session>();
-  return {
-    create(session: Session): string {
-      // Sessions whose cookie never comes back would otherwise stay until restart.
-      for (const [id, s] of sessions) {
-        if (s.expiresAt <= now()) sessions.delete(id);
-      }
-      const id = randomBytes(32).toString("base64url");
-      sessions.set(id, session);
-      return id;
-    },
-    size: () => sessions.size,
-    get(id: string | undefined): Session | null {
-      const session = id ? sessions.get(id) : undefined;
-      if (!id || !session) return null;
-      if (session.expiresAt <= now()) {
-        sessions.delete(id);
-        return null;
-      }
-      return session;
-    },
-    destroy(id: string | undefined): void {
-      if (id) sessions.delete(id);
-    },
-  };
+const AUTHN_AUDIENCE = "bae6-authn";
+
+/** A token for `audience` on behalf of the session, or null once authn no longer honours it. */
+export async function tokenFor(
+  authn: Authn,
+  cookie: string,
+  audience: string,
+): Promise<string | null> {
+  try {
+    const { accessToken } = await authn.exchangeToken({
+      subjectToken: cookie,
+      subjectTokenType: "session",
+      audience,
+    });
+    return accessToken;
+  } catch (err) {
+    if (err instanceof AuthnValidationError && err.code === "invalid_request")
+      return null;
+    throw err;
+  }
 }
 
-export type SessionStore = ReturnType<typeof createSessionStore>;
+// shortcut: one exchange per request to validate the session, and one per API call;
+// cache tokens per session until near expiry if authn load becomes a problem.
+export async function resolveSession(
+  authn: Authn,
+  cookie: string | undefined,
+): Promise<Session | null> {
+  if (!cookie) return null;
+  const token = await tokenFor(authn, cookie, AUTHN_AUDIENCE);
+  if (!token) return null;
+  // Read, not verified: the token came straight from authn's token endpoint.
+  const { sub } = decodeJwt(token);
+  if (!sub) throw new Error("authn issued a token without a subject");
+  return { cookie, subject: sub };
+}

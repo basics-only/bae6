@@ -608,6 +608,9 @@ importers:
 
   services/console:
     dependencies:
+      '@bae6/authn':
+        specifier: workspace:*
+        version: link:../../packages/authn/ts
       jose:
         specifier: 'catalog:'
         version: 6.2.14

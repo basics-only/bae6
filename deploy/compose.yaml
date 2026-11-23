@@ -14,7 +14,7 @@ x-health: &health
 services:
   postgres:
     image: pgvector/pgvector:0.8.1-pg17
-    profiles: [authn, authz, ai, context, all]
+    profiles: [authn, authz, ai, context, console, all]
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-dev-only-admin}
       OPENFGA_DB_PASSWORD: ${OPENFGA_DB_PASSWORD:-dev-only-openfga}
@@ -41,7 +41,7 @@ services:
     build:
       context: ..
       dockerfile: services/authn/api/Dockerfile
-    profiles: [authn, all]
+    profiles: [authn, console, all]
     <<: *health
     environment:
       <<: *dev
@@ -50,7 +50,7 @@ services:
       BAE6_AUTHN_KEYS_DIR: /run/secrets/authn-keys
       BAE6_AUTHN_TENANT_HOSTS: acme.bae6.localhost:8092=acme
       BAE6_AUTHN_ISSUER: http://authn:8080
-      BAE6_AUTHN_AUDIENCES: bae6-authn,bae6-ai,data-api,embed-api,mcp-gateway,mcp-registry
+      BAE6_AUTHN_AUDIENCES: bae6-authn,bae6-authz,bae6-ai,eval-worker,agent-worker,data-api,embed-api,mcp-gateway,mcp-registry
       BAE6_AUTHN_SIGNING_KEYS: dev-signing.pem
       BAE6_AUTHN_SESSION_CLIENTS: console
     volumes:
@@ -63,7 +63,7 @@ services:
 
   authn-keys:
     image: localhost/bae6-authn-api:dev
-    profiles: [authn, all]
+    profiles: [authn, console, all]
     user: "0"
     command:
       - node
@@ -79,8 +79,11 @@ services:
         write("dev-signing.pem", () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" })
           .privateKey.export({ type: "pkcs8", format: "pem" }));
         write("token-client-console", () => crypto.randomBytes(32).toString("base64url"));
+        fs.copyFileSync("/keys/token-client-console", "/console/authn-client-secret");
+        fs.chownSync("/console/authn-client-secret", 1000, 1000);
     volumes:
       - authn-keys:/keys
+      - console-authn:/console
 
   openfga-migrate:
     image: openfga/openfga:v1.10.2
@@ -182,7 +185,6 @@ services:
       MOCK_OIDC_ISSUER: http://mock-oidc:8080
       MOCK_OIDC_CLIENT_AUDIENCE: bae6-context-mcp
       MOCK_OIDC_PUBLIC_URL: http://localhost:8085
-      MOCK_OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8091/auth/callback}
     ports:
       - "127.0.0.1:8085:8080"
 
@@ -430,22 +432,22 @@ services:
     profiles: [console, all]
     environment:
       ORIGIN: ${CONSOLE_ORIGIN:-http://localhost:8091}
-      OIDC_ISSUER: ${OIDC_ISSUER:-http://mock-oidc:8080}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-bae6-console}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
-      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8091/auth/callback}
-      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      BAE6_AUTHN_URL: http://authn:8080
+      BAE6_AUTHN_CLIENT_SECRET_FILE: /run/secrets/authn/authn-client-secret
       BAE6_AUTHZ_URL: http://authz-api:8080
       BAE6_AI_URL: http://ai-gateway:8080
       BAE6_EVAL_URL: http://eval-worker:8080
       BAE6_AGENT_URL: http://agent-worker:8080
       BAE6_MCP_REGISTRY_URL: http://mcp-registry:8080
+    volumes:
+      - console-authn:/run/secrets/authn:ro
     ports:
       - "127.0.0.1:8091:8080"
     depends_on:
-      mock-oidc: {condition: service_started}
+      authn: {condition: service_healthy}
 
 volumes:
   pgdata:
   tokens:
   authn-keys:
+  console-authn:
