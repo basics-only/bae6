@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/event-correlation.json",
+  "title": "EventCorrelation",
+  "description": "Fields every authorization and usage event carries, so the two can be joined without email addresses (ADR-0022).",
+  "type": "object",
+  "required": ["eventId", "eventType", "schemaVersion", "occurredAt", "tenantId", "principalId", "actorId", "requestId"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$", "maxLength": 128 },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "tenantId": { "$ref": "identity-context.json#/$defs/slug" },
+    "principalId": { "$ref": "principal.json#/$defs/principalId" },
+    "actorId": { "$ref": "principal.json#/$defs/principalId" },
+    "applicationId": { "$ref": "identity-context.json#/$defs/slug" },
+    "resource": { "$ref": "resource.json#/$defs/resourceRef" },
+    "taskId": { "$ref": "delegation.json#/$defs/taskId" },
+    "delegationId": { "$ref": "delegation.json#/$defs/delegationId" },
+    "traceId": { "$ref": "execution-context.json#/$defs/traceId" },
+    "requestId": { "$ref": "request-context.json#/$defs/requestId" },
+    "costCenterId": { "$ref": "identity-context.json#/$defs/slug" }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/principal.json",
+  "title": "Principal",
+  "description": "A stable, tenant-scoped actor (ADR-0021). Never identified by email or display name.",
+  "type": "object",
+  "required": ["id", "tenantId", "type", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "#/$defs/principalId" },
+    "tenantId": { "$ref": "identity-context.json#/$defs/slug" },
+    "type": { "$ref": "#/$defs/principalType" },
+    "status": { "enum": ["active", "disabled", "deprovisioned"] },
+    "ownerApplicationId": {
+      "description": "Required for agents: the application that owns the agent. An agent never inherits its owner's permissions.",
+      "$ref": "identity-context.json#/$defs/slug"
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "if": { "properties": { "type": { "const": "agent" } } },
+  "then": { "properties": { "ownerApplicationId": true }, "required": ["ownerApplicationId"] },
+  "$defs": {
+    "principalId": {
+      "description": "Opaque, minted by bae6-authn, never reused.",
+      "type": "string",
+      "pattern": "^prn_[0-9a-f]{32}$"
+    },
+    "principalType": { "enum": ["user", "group", "service", "application", "agent"] }
+  }
+}

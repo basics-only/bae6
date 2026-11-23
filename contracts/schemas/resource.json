@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/resource.json",
+  "title": "Resource",
+  "description": "Registry metadata for a protected resource (ADR-0020). Relationships live in OpenFGA, not here. The resource's OpenFGA object is `<type>:<id>`, unique per tenant.",
+  "type": "object",
+  "required": ["id", "tenantId", "type", "orgUnitId", "classification", "status", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "#/$defs/resourceId" },
+    "tenantId": { "$ref": "identity-context.json#/$defs/slug" },
+    "type": { "$ref": "#/$defs/resourceType" },
+    "orgUnitId": {
+      "description": "The org unit the resource belongs to; its guardrails apply.",
+      "$ref": "identity-context.json#/$defs/slug"
+    },
+    "parent": { "$ref": "#/$defs/resourceRef" },
+    "ownerPrincipalId": { "$ref": "principal.json#/$defs/principalId" },
+    "applicationId": { "$ref": "identity-context.json#/$defs/slug" },
+    "externalProvider": { "$ref": "identity-context.json#/$defs/slug" },
+    "externalResourceId": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "classification": { "enum": ["public", "internal", "confidential", "restricted"] },
+    "status": { "enum": ["active", "disabled", "deleted"] },
+    "attributes": {
+      "description": "Flat, schema-checked attributes. Only those set by an admin may be used in decisions.",
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"],
+        "maxLength": 256
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "resourceType": {
+      "enum": ["application", "api", "model", "agent", "prompt", "mcp_server", "tool", "dataset", "document", "service"]
+    },
+    "resourceId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "resourceRef": {
+      "description": "`<type>:<id>`, for example `model:finance-llm`.",
+      "type": "string",
+      "pattern": "^(application|api|model|agent|prompt|mcp_server|tool|dataset|document|service):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "action": {
+      "description": "`<resource type>:<verb>`, for example `model:invoke`.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}:[a-z][a-z0-9_]{0,31}$"
+    }
+  }
+}

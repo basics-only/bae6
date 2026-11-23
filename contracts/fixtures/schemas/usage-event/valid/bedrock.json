@@ -1,0 +1,19 @@
+{
+  "eventId": "6f1c2a7e-3b4d-4e5f-8a9b-0c1d2e3f4a5b",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-22T12:00:00Z",
+  "tenantId": "acme",
+  "principalId": "prn_11111111111111111111111111111111",
+  "actorId": "prn_22222222222222222222222222222222",
+  "requestId": "req-123",
+  "eventType": "usage.recorded",
+  "resource": "model:finance-llm",
+  "provider": "bedrock",
+  "modelId": "anthropic.claude-sonnet",
+  "inputTokens": 1200,
+  "outputTokens": 300,
+  "cachedInputTokens": 0,
+  "currency": "USD",
+  "estimatedCost": "0.0081",
+  "pricingVersion": "2026-11"
+}

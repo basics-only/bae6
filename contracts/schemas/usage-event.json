@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/usage-event.json",
+  "title": "UsageEvent",
+  "description": "Consumption measured by the service that did the work, such as bae6-ai. bae6-authz never emits these.",
+  "type": "object",
+  "allOf": [{ "$ref": "event-correlation.json" }],
+  "required": ["eventType", "resource", "provider", "modelId", "inputTokens", "outputTokens"],
+  "properties": {
+    "eventType": { "const": "usage.recorded" },
+    "resource": true,
+    "provider": { "$ref": "identity-context.json#/$defs/slug" },
+    "modelId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "inputTokens": { "type": "integer", "minimum": 0 },
+    "outputTokens": { "type": "integer", "minimum": 0 },
+    "cachedInputTokens": { "type": "integer", "minimum": 0 },
+    "usageUnits": { "type": "number", "minimum": 0 },
+    "billingAccount": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "estimatedCost": {
+      "description": "Decimal string, so no precision is lost in transit.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,15})(\\.[0-9]{1,12})?$"
+    },
+    "pricingVersion": { "type": "string", "minLength": 1, "maxLength": 64 }
+  },
+  "dependentRequired": { "estimatedCost": ["currency", "pricingVersion"] },
+  "unevaluatedProperties": false
+}

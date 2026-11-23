@@ -1,0 +1,17 @@
+{
+  "id": "dlg_cccccccccccccccccccccccccccccccc",
+  "tenantId": "acme",
+  "initiatingPrincipalId": "prn_11111111111111111111111111111111",
+  "actorPrincipalId": "prn_22222222222222222222222222222222",
+  "applicationId": "copilot",
+  "taskId": "task-42",
+  "allowedResources": [
+    "model:finance-llm"
+  ],
+  "allowedActions": [
+    "*"
+  ],
+  "expiresAt": "2026-11-22T12:00:00Z",
+  "policyVersion": "m1",
+  "createdAt": "2026-11-22T12:00:00Z"
+}

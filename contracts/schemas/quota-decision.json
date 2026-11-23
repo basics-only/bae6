@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/quota-decision.json",
+  "title": "QuotaDecision",
+  "description": "A quota check or reservation, kept separate from the authorization decision (ADR-0022). Contract only in v1.",
+  "type": "object",
+  "required": ["subjectType", "subjectId", "resource", "limitType", "outcome", "available"],
+  "additionalProperties": false,
+  "properties": {
+    "subjectType": { "enum": ["principal", "org_unit", "application", "cost_center"] },
+    "subjectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "resource": { "$ref": "resource.json#/$defs/resourceRef" },
+    "limitType": { "enum": ["tokens", "cost", "requests"] },
+    "outcome": { "enum": ["reserved", "exhausted"] },
+    "available": { "type": "number", "minimum": 0 },
+    "reservationId": { "type": "string", "pattern": "^rsv_[0-9a-f]{32}$" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  },
+  "if": { "properties": { "outcome": { "const": "reserved" } } },
+  "then": { "properties": { "reservationId": true, "expiresAt": true }, "required": ["reservationId", "expiresAt"] },
+  "else": { "properties": { "reservationId": false } }
+}

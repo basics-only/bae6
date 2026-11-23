@@ -1,0 +1,8 @@
+{
+  "subjectType": "org_unit",
+  "subjectId": "finance",
+  "resource": "model:finance-llm",
+  "limitType": "cost",
+  "outcome": "reserved",
+  "available": 1
+}

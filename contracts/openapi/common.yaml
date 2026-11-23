@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: bae6 common components
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Shared components every bae6 product API references. A product OpenAPI document
     `$ref`s these by relative path. Paths here are the
@@ -86,6 +86,26 @@ components:
       $ref: "../schemas/audit-event.json"
     CapabilityDescriptor:
       $ref: "../schemas/capability-descriptor.json"
+    Principal:
+      $ref: "../schemas/principal.json"
+    ExternalIdentity:
+      $ref: "../schemas/external-identity.json"
+    Resource:
+      $ref: "../schemas/resource.json"
+    Delegation:
+      $ref: "../schemas/delegation.json"
+    ExecutionContext:
+      $ref: "../schemas/execution-context.json"
+    Bae6TokenClaims:
+      $ref: "../schemas/bae6-token-claims.json"
+    EventCorrelation:
+      $ref: "../schemas/event-correlation.json"
+    AuthorizationEvent:
+      $ref: "../schemas/authorization-event.json"
+    UsageEvent:
+      $ref: "../schemas/usage-event.json"
+    QuotaDecision:
+      $ref: "../schemas/quota-decision.json"
     Health:
       type: object
       required: [status]
