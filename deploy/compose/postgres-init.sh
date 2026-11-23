@@ -3,6 +3,7 @@ set -eu
 
 for entry in \
   "openfga:$OPENFGA_DB_PASSWORD" \
+  "authn:$AUTHN_DB_PASSWORD" \
   "authz:$AUTHZ_DB_PASSWORD" \
   "ai:$AI_DB_PASSWORD" \
   "embed:$EMBED_DB_PASSWORD" \

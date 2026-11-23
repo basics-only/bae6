@@ -14,10 +14,11 @@ x-health: &health
 services:
   postgres:
     image: pgvector/pgvector:0.8.1-pg17
-    profiles: [authz, ai, context, all]
+    profiles: [authn, authz, ai, context, all]
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-dev-only-admin}
       OPENFGA_DB_PASSWORD: ${OPENFGA_DB_PASSWORD:-dev-only-openfga}
+      AUTHN_DB_PASSWORD: ${AUTHN_DB_PASSWORD:-dev-only-authn}
       AUTHZ_DB_PASSWORD: ${AUTHZ_DB_PASSWORD:-dev-only-authz}
       AI_DB_PASSWORD: ${AI_DB_PASSWORD:-dev-only-ai}
       EMBED_DB_PASSWORD: ${EMBED_DB_PASSWORD:-dev-only-embed}
@@ -34,6 +35,21 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  authn:
+    image: localhost/bae6-authn-api:dev
+    build:
+      context: ..
+      dockerfile: services/authn/api/Dockerfile
+    profiles: [authn, all]
+    <<: *health
+    environment:
+      <<: *dev
+      BAE6_AUTHN_DATABASE_URL: postgres://authn:${AUTHN_DB_PASSWORD:-dev-only-authn}@postgres:5432/authn
+    ports:
+      - "127.0.0.1:8092:8080"
+    depends_on:
+      postgres: {condition: service_healthy}
 
   openfga-migrate:
     image: openfga/openfga:v1.10.2

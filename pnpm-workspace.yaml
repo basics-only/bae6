@@ -5,6 +5,7 @@ packages:
   - services/console
   - services/ai/*
   - services/context/*
+  - services/authn/api
   - services/authz/api
   - services/authz/api/scripts
   - services/authz/api/tests/*

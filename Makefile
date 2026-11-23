@@ -41,7 +41,8 @@ demo:
 ORGS_OVERRIDE = e2e/orgs/compose.generated.json
 
 # Each package's database-backed tests get a fresh database, apart from the ones the running services use.
-DB_TESTS = services/authz/api:authz_test:test \
+DB_TESTS = services/authn/api:authn_test:test \
+	services/authz/api:authz_test:test \
 	services/authz/api/tests/security:authz_security_test:test:security \
 	services/ai/gateway:ai_test:test services/ai/agent-worker:agents_test:test \
 	services/ai/eval-worker:evals_test:test \

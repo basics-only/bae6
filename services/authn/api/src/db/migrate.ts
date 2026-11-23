@@ -1,0 +1,50 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { ClientBase } from "pg";
+
+const MIGRATIONS_DIR = join(import.meta.dirname, "../../migrations");
+const LOCK_ID = 7_201_101;
+
+export async function migrate(client: ClientBase): Promise<string[]> {
+  await client.query("SELECT pg_advisory_lock($1)", [LOCK_ID]);
+  try {
+    await client.query(
+      `CREATE TABLE IF NOT EXISTS schema_migrations (
+         version text PRIMARY KEY,
+         applied_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    );
+    const done = new Set(
+      (
+        await client.query<{ version: string }>(
+          "SELECT version FROM schema_migrations",
+        )
+      ).rows.map((r) => r.version),
+    );
+    const applied: string[] = [];
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    for (const file of files) {
+      if (done.has(file)) continue;
+      await client.query("BEGIN");
+      try {
+        await client.query("SET LOCAL lock_timeout = '5s'");
+        await client.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+        await client.query(
+          "INSERT INTO schema_migrations (version) VALUES ($1)",
+          [file],
+        );
+        await client.query("COMMIT");
+      } catch (err) {
+        // A dead connection rejects ROLLBACK too; keep the migration's error, not that one.
+        await client.query("ROLLBACK").catch(() => {});
+        throw new Error(`migration ${file} failed`, { cause: err });
+      }
+      applied.push(file);
+    }
+    return applied;
+  } finally {
+    await client.query("SELECT pg_advisory_unlock($1)", [LOCK_ID]);
+  }
+}
