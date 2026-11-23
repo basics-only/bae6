@@ -46,6 +46,8 @@ services:
     environment:
       <<: *dev
       BAE6_AUTHN_DATABASE_URL: postgres://authn:${AUTHN_DB_PASSWORD:-dev-only-authn}@postgres:5432/authn
+      BAE6_AUTHN_SECRETS_DIR: /run/secrets/authn
+      BAE6_AUTHN_TENANT_HOSTS: acme.bae6.localhost=acme
     ports:
       - "127.0.0.1:8092:8080"
     depends_on:
