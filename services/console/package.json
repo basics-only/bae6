@@ -15,6 +15,7 @@
     "lint": "biome check ."
   },
   "dependencies": {
+    "@bae6/authn": "workspace:*",
     "jose": "catalog:"
   },
   "devDependencies": {

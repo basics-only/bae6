@@ -31,6 +31,21 @@
       },
     ].filter((g) => g.show),
   );
+
+  let signOutFailed = $state(false);
+  async function signOut() {
+    const csrf = document.cookie
+      .split("; ")
+      .find((c) => c.startsWith("__Host-bae6-csrf="))
+      ?.slice("__Host-bae6-csrf=".length);
+    const res = await fetch("/auth/logout", {
+      method: "POST",
+      headers: { "x-csrf-token": csrf ?? "" },
+    }).catch(() => null);
+    // 401: the session had already ended, which is the outcome asked for.
+    if (res && (res.ok || res.status === 401)) location.assign("/signed-out");
+    else signOutFailed = true;
+  }
 </script>
 
 <svelte:head><title>bae6 console</title></svelte:head>
@@ -50,10 +65,11 @@
           {/each}
         {/each}
       </nav>
-      <form method="POST" action="/logout" class="account">
+      <div class="account">
         <span class="who">{data.subject}</span>
-        <button type="submit">Sign out</button>
-      </form>
+        <button type="button" onclick={signOut}>Sign out</button>
+        {#if signOutFailed}<span role="alert">Sign-out failed. Try again.</span>{/if}
+      </div>
     </aside>
     <main class="content">{@render children()}</main>
   </div>

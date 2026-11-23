@@ -1,13 +1,28 @@
 import { error, redirect } from "@sveltejs/kit";
 import { ApiError, apiJson, apiMutation } from "./api";
-import { type Service, serviceUrl } from "./context";
-import type { Session } from "./session";
+import { AUDIENCES, authn, type Service, serviceUrl } from "./context";
+import { type Session, tokenFor } from "./session";
 
 function baseOf(service: Service): string {
   const url = serviceUrl(service);
   // A service this console is not set up for has no pages.
   if (!url) error(404, "Not found.");
   return url;
+}
+
+/** The user's token for one service; an ended session sends the user back to login. */
+async function bearer(
+  locals: { session: Session | null },
+  service: Service,
+): Promise<{ accessToken: string }> {
+  if (!locals.session) redirect(303, "/login");
+  const token = await tokenFor(
+    authn(),
+    locals.session.cookie,
+    AUDIENCES[service],
+  );
+  if (!token) redirect(303, "/login");
+  return { accessToken: token };
 }
 
 /**
@@ -20,10 +35,10 @@ export async function callApi<T>(
   init?: { method?: string; body?: unknown },
   service: Service = "authz",
 ): Promise<T> {
-  if (!locals.session) redirect(303, "/login");
   const base = baseOf(service);
+  const token = await bearer(locals, service);
   try {
-    return await apiJson<T>(base, locals.session, path, init);
+    return await apiJson<T>(base, token, path, init);
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.status === 401) redirect(303, "/login");
@@ -46,12 +61,12 @@ export async function mutate(
   | { ok: true; auditEventId: string | null; body: unknown }
   | { ok: false; status: number; message: string }
 > {
-  if (!locals.session) redirect(303, "/login");
   const base = baseOf(service);
+  const token = await bearer(locals, service);
   try {
     return {
       ok: true,
-      ...(await apiMutation(base, locals.session, path, init)),
+      ...(await apiMutation(base, token, path, init)),
     };
   } catch (err) {
     if (err instanceof ApiError) {

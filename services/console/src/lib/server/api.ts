@@ -1,4 +1,4 @@
-import type { Session } from "./session.js";
+type Session = { accessToken: string };
 
 export class ApiError extends Error {
   constructor(
@@ -11,7 +11,7 @@ export class ApiError extends Error {
 }
 
 /**
- * Calls the authz API as the logged-in user. The console never talks to OpenFGA or
+ * Calls a service API with the logged-in user's token for it. The console never talks to OpenFGA or
  * Postgres; every decision, including "may this user see this", is the API's.
  */
 export async function apiJson<T>(

@@ -1,18 +1,16 @@
 import type { Session } from "./session.js";
 
-const PUBLIC_PATHS = new Set([
-  "/login",
-  "/auth/callback",
-  "/signed-out",
-  "/healthz",
-]);
+const PUBLIC_PATHS = new Set(["/login", "/signed-out", "/healthz"]);
+
+/** Public pages never consult authn, so they still render while it is down. */
+export const isPublic = (pathname: string) => PUBLIC_PATHS.has(pathname);
 
 /** Where an unauthenticated request goes, or null if it may proceed. */
 export function loginRedirect(
   pathname: string,
   session: Session | null,
 ): string | null {
-  return session || PUBLIC_PATHS.has(pathname) ? null : "/login";
+  return session || isPublic(pathname) ? null : "/login";
 }
 
 /**

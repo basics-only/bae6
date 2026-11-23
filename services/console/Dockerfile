@@ -5,7 +5,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile --filter @bae6/console...
-RUN pnpm --filter @bae6/console build
+RUN pnpm --filter @bae6/console... build
 # Only production dependencies and the adapter output reach the runtime image.
 RUN pnpm --filter @bae6/console deploy --prod --legacy /app
 RUN cp -r services/console/build /app/build

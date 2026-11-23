@@ -1,7 +1,8 @@
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
-import { SESSION_COOKIE, sessions } from "$lib/server/context";
-import { crossSiteMutation, loginRedirect } from "$lib/server/guard";
+import { authn, SESSION_COOKIE } from "$lib/server/context";
+import { crossSiteMutation, isPublic, loginRedirect } from "$lib/server/guard";
+import { resolveSession } from "$lib/server/session";
 
 export const handle: Handle = async ({ event, resolve }) => {
   if (
@@ -14,7 +15,9 @@ export const handle: Handle = async ({ event, resolve }) => {
     return new Response("Cross-site request refused.", { status: 403 });
   }
 
-  const session = sessions.get(event.cookies.get(SESSION_COOKIE));
+  const session = isPublic(event.url.pathname)
+    ? null
+    : await resolveSession(authn(), event.cookies.get(SESSION_COOKIE));
   event.locals.session = session;
   const to = loginRedirect(event.url.pathname, session);
   if (to) redirect(303, to);
