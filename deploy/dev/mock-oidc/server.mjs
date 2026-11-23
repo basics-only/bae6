@@ -1,8 +1,10 @@
 // Development-only OIDC issuer: serves a JWKS and mints tokens on request.
 // Anyone who can reach it can mint any identity, so it refuses production and must never be exposed.
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { createIdp } from "./idp.mjs";
 
 if (process.env.NODE_ENV === "production")
   throw new Error("mock-oidc must not run in production");
@@ -79,6 +81,21 @@ const loginRedirect = process.env.MOCK_OIDC_REDIRECT_URI;
 const codes = new Map();
 const MAX_CODES = 100;
 
+// The provider mocks sign users in without asking too, so they share the browser-login opt-in.
+const idp = publicUrl
+  ? await createIdp({
+      baseUrl: issuer,
+      publicUrl,
+      config: JSON.parse(
+        readFileSync(
+          process.env.MOCK_IDP_CONFIG ??
+            new URL("./providers.json", import.meta.url),
+          "utf8",
+        ),
+      ),
+    })
+  : undefined;
+
 function authorize(url, send, res) {
   const q = url.searchParams;
   if (
@@ -144,6 +161,7 @@ createServer(async (req, res) => {
     res.end(typeof value === "string" ? value : JSON.stringify(value));
   };
   const url = new URL(req.url, "http://mock");
+  if (idp && (await idp.handle(req, res, url))) return;
   const org = ORG.exec(url.pathname);
   const from = org ? await orgIssuer(org[1]) : root;
   if (!from) return send(429, { code: "too_many_orgs", requestId: "mock" });
