@@ -23,6 +23,7 @@ catalog:
   "@types/pg": 8.23.1
   ajv: 8.20.0
   jose: 6.2.14
+  openid-client: 6.9.1
   pg: 8.23.1
   tsx: 4.20.6
   typescript: 5.9.3
