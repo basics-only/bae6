@@ -52,6 +52,8 @@ export interface Raw {
 
 export interface Send {
   body?: unknown;
+  /** Sent as application/x-www-form-urlencoded instead of a JSON `body`. */
+  form?: Record<string, string>;
   headers?: Record<string, string>;
   idempotencyKey?: string;
   signal?: AbortSignal;
@@ -202,9 +204,11 @@ export class Transport {
       ...(opts.idempotencyKey
         ? { "idempotency-key": opts.idempotencyKey }
         : {}),
-      ...(opts.body === undefined
-        ? {}
-        : { "content-type": "application/json" }),
+      ...(opts.form !== undefined
+        ? { "content-type": "application/x-www-form-urlencoded" }
+        : opts.body === undefined
+          ? {}
+          : { "content-type": "application/json" }),
       ...opts.headers,
     };
     await this.#onRequest?.({ method, url, attempt, headers });
@@ -224,7 +228,11 @@ export class Transport {
       redirect: "manual",
       ...(signal ? { signal } : {}),
       headers: sent.headers,
-      ...(opts.body === undefined ? {} : { body: JSON.stringify(opts.body) }),
+      ...(opts.form !== undefined
+        ? { body: new URLSearchParams(opts.form).toString() }
+        : opts.body === undefined
+          ? {}
+          : { body: JSON.stringify(opts.body) }),
     });
     await this.#onResponse?.({
       method,
