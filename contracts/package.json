@@ -1,6 +1,6 @@
 {
   "name": "bae6-contracts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "lint": "redocly lint openapi/common.yaml",
+    "lint": "redocly lint openapi/common.yaml ../services/authn/api/openapi.yaml",
     "test": "node --test test/*.test.mjs"
   },
   "devDependencies": {

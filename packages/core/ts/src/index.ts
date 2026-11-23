@@ -1,3 +1,5 @@
+export type * from "./identity.js";
+
 export type Credentials = string | (() => string | Promise<string>);
 
 export interface RequestInfo {

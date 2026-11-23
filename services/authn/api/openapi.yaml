@@ -1,0 +1,309 @@
+openapi: 3.1.0
+info:
+  title: bae6-authn
+  version: 0.1.0
+  description: |
+    Sign-in with enterprise identity providers, principal resolution and the internal
+    token exchange (ADR-0019, ADR-0021). Services verify bae6 tokens locally against
+    `/.well-known/jwks.json`; nothing here is on a request's hot path, and there is no
+    introspection endpoint until a caller needs one.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://localhost:8090
+security:
+  - bearer: []
+paths:
+  /health/live:
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1live"
+  /health/ready:
+    $ref: "../../../contracts/openapi/common.yaml#/paths/~1health~1ready"
+  /.well-known/jwks.json:
+    get:
+      operationId: jwks
+      summary: Public keys for verifying bae6 tokens, including keys still in their rotation overlap.
+      security: []
+      responses:
+        "200":
+          description: JSON Web Key Set.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Jwks"
+  /auth/providers:
+    get:
+      operationId: listProviders
+      summary: Sign-in options for the tenant this host serves.
+      security: []
+      responses:
+        "200":
+          description: Provider connections that allow interactive login.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                additionalProperties: false
+                properties:
+                  providers:
+                    type: array
+                    maxItems: 50
+                    items:
+                      $ref: "#/components/schemas/ProviderConnection"
+  /auth/login/{provider}:
+    get:
+      operationId: login
+      summary: Start Authorization Code with PKCE. Sets a short-lived, HttpOnly state cookie.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+        - name: returnTo
+          in: query
+          description: A path on this application, never an absolute URL.
+          schema:
+            type: string
+            pattern: "^/(?!/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]{0,1023}$"
+      responses:
+        "302":
+          description: Redirect to the provider's authorization endpoint.
+          headers:
+            Location:
+              schema:
+                type: string
+        "404":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
+  /auth/callback/{provider}:
+    get:
+      operationId: callback
+      summary: Finish login. Checks state, nonce and PKCE, verifies the ID token, resolves the principal and starts a session.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Provider"
+        - name: code
+          in: query
+          schema:
+            type: string
+            maxLength: 2048
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+        - name: error
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "303":
+          description: Session started; redirect to `returnTo`. Sets the session cookie (`__Host-`, Secure, HttpOnly, SameSite=Lax).
+          headers:
+            Location:
+              schema:
+                type: string
+        "400":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
+        "401":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
+        "503":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: End the session, and the provider session where the provider supports it.
+      security:
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/Csrf"
+      responses:
+        "204":
+          description: Session ended; no provider logout needed.
+        "303":
+          description: Session ended; redirect to the provider's logout endpoint.
+          headers:
+            Location:
+              schema:
+                type: string
+        "401":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
+        "403":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
+  /auth/me:
+    get:
+      operationId: me
+      summary: The signed-in principal.
+      security:
+        - session: []
+        - bearer: []
+      responses:
+        "200":
+          description: The caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [principal, orgPath]
+                additionalProperties: false
+                properties:
+                  principal:
+                    $ref: "../../../contracts/schemas/principal.json"
+                  orgPath:
+                    $ref: "../../../contracts/schemas/execution-context.json#/$defs/orgPath"
+        "401":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
+  /auth/token:
+    post:
+      operationId: exchangeToken
+      summary: RFC 8693 token exchange for a bae6 token with one audience.
+      description: |
+        `subject_token` is a verified provider access token, or a bae6 token being
+        re-exchanged for another audience. Re-exchange keeps the actor and delegation and
+        can only narrow them. With `delegation_id`, `actor_token` is the agent's own
+        credential and the delegation must name that actor.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, subject_token, subject_token_type, audience]
+              additionalProperties: false
+              dependentRequired:
+                actor_token: [actor_token_type]
+                actor_token_type: [actor_token]
+                delegation_id: [actor_token]
+              properties:
+                grant_type:
+                  const: urn:ietf:params:oauth:grant-type:token-exchange
+                subject_token:
+                  type: string
+                  maxLength: 8192
+                subject_token_type:
+                  enum:
+                    - urn:ietf:params:oauth:token-type:access_token
+                    - urn:ietf:params:oauth:token-type:jwt
+                actor_token:
+                  type: string
+                  maxLength: 8192
+                actor_token_type:
+                  enum:
+                    - urn:ietf:params:oauth:token-type:access_token
+                    - urn:ietf:params:oauth:token-type:jwt
+                audience:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                delegation_id:
+                  $ref: "../../../contracts/schemas/delegation.json#/$defs/delegationId"
+                requested_token_type:
+                  const: urn:ietf:params:oauth:token-type:jwt
+      responses:
+        "200":
+          description: The bae6 token. Its claims follow `Bae6TokenClaims`.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, issued_token_type, token_type, expires_in]
+                additionalProperties: false
+                properties:
+                  access_token:
+                    type: string
+                  issued_token_type:
+                    const: urn:ietf:params:oauth:token-type:jwt
+                  token_type:
+                    const: Bearer
+                  expires_in:
+                    type: integer
+                    minimum: 1
+                    maximum: 300
+        "400":
+          $ref: "#/components/responses/OAuthError"
+        "401":
+          $ref: "#/components/responses/OAuthError"
+        "503":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
+components:
+  securitySchemes:
+    bearer:
+      $ref: "../../../contracts/openapi/common.yaml#/components/securitySchemes/bearer"
+    session:
+      type: apiKey
+      in: cookie
+      name: __Host-bae6-session
+  parameters:
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema:
+        $ref: "../../../contracts/schemas/identity-context.json#/$defs/slug"
+    Csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Must match the session's CSRF token.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9_-]{32,128}$"
+  schemas:
+    ProviderConnection:
+      type: object
+      required: [id, kind, displayName]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: "../../../contracts/schemas/identity-context.json#/$defs/slug"
+        kind:
+          enum: [pingfederate, entra, okta, oidc]
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+    Jwks:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [kty, kid, alg, use]
+            properties:
+              kty:
+                enum: [RSA, EC, OKP]
+              kid:
+                type: string
+                maxLength: 128
+              alg:
+                enum: [RS256, PS256, ES256, EdDSA]
+              use:
+                const: sig
+  responses:
+    OAuthError:
+      description: RFC 6749 error. The description never says which check failed.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            additionalProperties: false
+            properties:
+              error:
+                enum: [invalid_request, invalid_client, invalid_grant, unauthorized_client, unsupported_grant_type, invalid_target]
+              error_description:
+                type: string
+                maxLength: 256

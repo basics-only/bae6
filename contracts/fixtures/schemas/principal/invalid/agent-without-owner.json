@@ -1,0 +1,8 @@
+{
+  "id": "prn_22222222222222222222222222222222",
+  "tenantId": "acme",
+  "type": "agent",
+  "status": "active",
+  "createdAt": "2026-11-22T12:00:00Z",
+  "updatedAt": "2026-11-22T12:00:00Z"
+}

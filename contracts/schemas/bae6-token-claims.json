@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/bae6-token-claims.json",
+  "title": "Bae6TokenClaims",
+  "description": "Claims of the internal token bae6-authn issues (ADR-0019). Verifiers also require exp - iat <= 300 and exactly their own audience. Claim names follow draft-ietf-oauth-transaction-tokens where they fit (`txn`) and RFC 8693 (`act`).",
+  "type": "object",
+  "required": ["iss", "aud", "sub", "iat", "exp", "jti", "txn", "tenant_id", "org_path", "principal_type"],
+  "additionalProperties": false,
+  "properties": {
+    "iss": { "type": "string", "format": "uri", "maxLength": 512 },
+    "aud": {
+      "description": "Exactly one downstream service. An array is never issued.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "sub": { "$ref": "principal.json#/$defs/principalId" },
+    "iat": { "type": "integer", "minimum": 0 },
+    "nbf": { "type": "integer", "minimum": 0 },
+    "exp": { "type": "integer", "minimum": 0 },
+    "jti": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$" },
+    "txn": { "$ref": "request-context.json#/$defs/requestId" },
+    "tenant_id": { "$ref": "identity-context.json#/$defs/slug" },
+    "org_path": { "$ref": "execution-context.json#/$defs/orgPath" },
+    "principal_type": { "$ref": "principal.json#/$defs/principalType" },
+    "act": {
+      "description": "The immediate actor working for `sub`. Nested chains are not repeated here; they are recovered from the delegation's `parentDelegationId`.",
+      "type": "object",
+      "required": ["sub"],
+      "additionalProperties": false,
+      "properties": { "sub": { "$ref": "principal.json#/$defs/principalId" } }
+    },
+    "application_id": { "$ref": "identity-context.json#/$defs/slug" },
+    "session_id": { "$ref": "execution-context.json#/$defs/sessionId" },
+    "task_id": { "$ref": "delegation.json#/$defs/taskId" },
+    "delegation_id": { "$ref": "delegation.json#/$defs/delegationId" },
+    "cost_center_id": { "$ref": "identity-context.json#/$defs/slug" },
+    "trace_id": { "$ref": "execution-context.json#/$defs/traceId" }
+  },
+  "dependentRequired": { "delegation_id": ["act", "task_id"] }
+}

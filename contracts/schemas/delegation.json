@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/delegation.json",
+  "title": "Delegation",
+  "description": "A task-scoped grant from an initiator to an actor (ADR-0022). A delegated action needs the delegation, the initiator and the actor to all allow it at check time.",
+  "type": "object",
+  "required": [
+    "id",
+    "tenantId",
+    "initiatingPrincipalId",
+    "actorPrincipalId",
+    "applicationId",
+    "taskId",
+    "allowedResources",
+    "allowedActions",
+    "expiresAt",
+    "policyVersion",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "#/$defs/delegationId" },
+    "tenantId": { "$ref": "identity-context.json#/$defs/slug" },
+    "initiatingPrincipalId": { "$ref": "principal.json#/$defs/principalId" },
+    "actorPrincipalId": { "$ref": "principal.json#/$defs/principalId" },
+    "applicationId": { "$ref": "identity-context.json#/$defs/slug" },
+    "taskId": { "$ref": "#/$defs/taskId" },
+    "parentDelegationId": {
+      "description": "Set for a nested delegation; its scope is a subset of the parent's and it expires no later.",
+      "$ref": "#/$defs/delegationId"
+    },
+    "allowedResources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": { "$ref": "resource.json#/$defs/resourceRef" }
+    },
+    "allowedActions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": { "$ref": "resource.json#/$defs/action" }
+    },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "revokedAt": { "type": "string", "format": "date-time" },
+    "policyVersion": {
+      "description": "The tenant model ID the delegation was created under.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "delegationId": { "type": "string", "pattern": "^dlg_[0-9a-f]{32}$" },
+    "taskId": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$" }
+  }
+}

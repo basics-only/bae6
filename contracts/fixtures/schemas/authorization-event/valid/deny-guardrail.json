@@ -1,0 +1,16 @@
+{
+  "eventId": "6f1c2a7e-3b4d-4e5f-8a9b-0c1d2e3f4a5b",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-22T12:00:00Z",
+  "tenantId": "acme",
+  "principalId": "prn_11111111111111111111111111111111",
+  "actorId": "prn_22222222222222222222222222222222",
+  "requestId": "req-123",
+  "eventType": "authorization.decision",
+  "resource": "model:finance-llm",
+  "action": "model:invoke",
+  "decision": "deny",
+  "reasonCode": "guardrail",
+  "policyVersion": "m1",
+  "latencyMs": 3.2
+}

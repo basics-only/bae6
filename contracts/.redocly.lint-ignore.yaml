@@ -1,0 +1,5 @@
+# Login and callback answer only with redirects.
+../services/authn/api/openapi.yaml:
+  operation-2xx-response:
+    - "#/paths/~1auth~1login~1{provider}/get/responses"
+    - "#/paths/~1auth~1callback~1{provider}/get/responses"

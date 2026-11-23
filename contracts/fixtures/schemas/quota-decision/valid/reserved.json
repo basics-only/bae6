@@ -1,0 +1,10 @@
+{
+  "subjectType": "org_unit",
+  "subjectId": "finance",
+  "resource": "model:finance-llm",
+  "limitType": "cost",
+  "outcome": "reserved",
+  "available": 12.5,
+  "reservationId": "rsv_dddddddddddddddddddddddddddddddd",
+  "expiresAt": "2026-11-22T12:00:00Z"
+}

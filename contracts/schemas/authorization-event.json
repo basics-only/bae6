@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/basics-only/bae6-contracts/schemas/authorization-event.json",
+  "title": "AuthorizationEvent",
+  "description": "One authorization decision, emitted by bae6-authz or an enforcement point. Never carries tokens or tuples.",
+  "type": "object",
+  "allOf": [{ "$ref": "event-correlation.json" }],
+  "required": ["eventType", "resource", "action", "decision", "reasonCode", "policyVersion", "latencyMs"],
+  "properties": {
+    "eventType": { "const": "authorization.decision" },
+    "resource": true,
+    "action": { "$ref": "resource.json#/$defs/action" },
+    "decision": { "enum": ["allow", "deny", "indeterminate"] },
+    "reasonCode": {
+      "enum": ["granted", "no_relation", "guardrail", "delegation_scope", "delegation_expired", "delegation_revoked", "principal_disabled", "unavailable"]
+    },
+    "policyVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "latencyMs": { "type": "number", "minimum": 0 }
+  },
+  "unevaluatedProperties": false
+}

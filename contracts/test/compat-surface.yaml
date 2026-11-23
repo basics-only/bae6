@@ -29,3 +29,43 @@ paths:
     post:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/capability-descriptor.json" } } } }
       responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/capability-descriptor.json" } } } } }
+  /principal:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/principal.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/principal.json" } } } } }
+  /external-identity:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/external-identity.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/external-identity.json" } } } } }
+  /resource:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/resource.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/resource.json" } } } } }
+  /delegation:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/delegation.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/delegation.json" } } } } }
+  /execution-context:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/execution-context.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/execution-context.json" } } } } }
+  /bae6-token-claims:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/bae6-token-claims.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/bae6-token-claims.json" } } } } }
+  /event-correlation:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/event-correlation.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/event-correlation.json" } } } } }
+  /authorization-event:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/authorization-event.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/authorization-event.json" } } } } }
+  /usage-event:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/usage-event.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/usage-event.json" } } } } }
+  /quota-decision:
+    post:
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "../schemas/quota-decision.json" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "../schemas/quota-decision.json" } } } } }

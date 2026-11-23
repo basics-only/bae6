@@ -1,0 +1,10 @@
+{
+  "id": "xid_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "principalId": "prn_11111111111111111111111111111111",
+  "providerConnectionId": "acme-entra",
+  "issuer": "https://login.microsoftonline.com/0000/v2.0",
+  "subject": "AAAAabc",
+  "externalTenantId": "0000",
+  "externalObjectId": "1111",
+  "lastVerifiedAt": "2026-11-22T12:00:00Z"
+}
