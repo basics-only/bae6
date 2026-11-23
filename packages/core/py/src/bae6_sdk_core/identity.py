@@ -1,5 +1,3 @@
-"""Types for the identity contracts in contracts/schemas (ADR-0018 to ADR-0022)."""
-
 from typing import Literal, NotRequired, TypedDict
 
 PrincipalType = Literal["user", "group", "service", "application", "agent"]

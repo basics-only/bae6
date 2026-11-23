@@ -18,5 +18,5 @@
   },
   "if": { "properties": { "outcome": { "const": "reserved" } } },
   "then": { "properties": { "reservationId": true, "expiresAt": true }, "required": ["reservationId", "expiresAt"] },
-  "else": { "properties": { "reservationId": false } }
+  "else": { "properties": { "reservationId": false, "expiresAt": false } }
 }

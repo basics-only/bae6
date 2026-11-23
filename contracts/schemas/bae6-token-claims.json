@@ -24,7 +24,7 @@
     "org_path": { "$ref": "execution-context.json#/$defs/orgPath" },
     "principal_type": { "$ref": "principal.json#/$defs/principalType" },
     "act": {
-      "description": "Present when an actor works for `sub`.",
+      "description": "The immediate actor working for `sub`. Nested chains are not repeated here; they are recovered from the delegation's `parentDelegationId`.",
       "type": "object",
       "required": ["sub"],
       "additionalProperties": false,

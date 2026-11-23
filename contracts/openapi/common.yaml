@@ -98,8 +98,6 @@ components:
       $ref: "../schemas/execution-context.json"
     Bae6TokenClaims:
       $ref: "../schemas/bae6-token-claims.json"
-    EventCorrelation:
-      $ref: "../schemas/event-correlation.json"
     AuthorizationEvent:
       $ref: "../schemas/authorization-event.json"
     UsageEvent:

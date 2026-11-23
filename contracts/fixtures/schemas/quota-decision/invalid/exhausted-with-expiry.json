@@ -1,0 +1,9 @@
+{
+  "subjectType": "principal",
+  "subjectId": "prn_11111111111111111111111111111111",
+  "resource": "model:finance-llm",
+  "limitType": "tokens",
+  "outcome": "exhausted",
+  "available": 0,
+  "expiresAt": "2026-11-22T12:00:00Z"
+}

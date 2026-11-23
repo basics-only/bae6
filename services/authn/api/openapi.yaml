@@ -5,7 +5,8 @@ info:
   description: |
     Sign-in with enterprise identity providers, principal resolution and the internal
     token exchange (ADR-0019, ADR-0021). Services verify bae6 tokens locally against
-    `/.well-known/jwks.json`; nothing here is on a request's hot path.
+    `/.well-known/jwks.json`; nothing here is on a request's hot path, and there is no
+    introspection endpoint until a caller needs one.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -66,7 +67,7 @@ paths:
           description: A path on this application, never an absolute URL.
           schema:
             type: string
-            pattern: "^/(?!/)[A-Za-z0-9._~!$&'()*+,;=:@%/?-]{0,1023}$"
+            pattern: "^/(?!/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]{0,1023}$"
       responses:
         "302":
           description: Redirect to the provider's authorization endpoint.
@@ -175,6 +176,10 @@ paths:
               type: object
               required: [grant_type, subject_token, subject_token_type, audience]
               additionalProperties: false
+              dependentRequired:
+                actor_token: [actor_token_type]
+                actor_token_type: [actor_token]
+                delegation_id: [actor_token]
               properties:
                 grant_type:
                   const: urn:ietf:params:oauth:grant-type:token-exchange
@@ -230,46 +235,6 @@ paths:
           $ref: "#/components/responses/OAuthError"
         "503":
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
-  /auth/introspect:
-    post:
-      operationId: introspect
-      summary: RFC 7662 introspection of a bae6 token, for internal callers holding `authn:introspect`. Never for provider tokens.
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              required: [token]
-              additionalProperties: false
-              properties:
-                token:
-                  type: string
-                  maxLength: 8192
-      responses:
-        "200":
-          description: Inactive tokens return only `active` false, whatever the reason.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - type: object
-                    required: [active]
-                    additionalProperties: false
-                    properties:
-                      active:
-                        const: false
-                  - allOf:
-                      - $ref: "../../../contracts/schemas/bae6-token-claims.json"
-                    type: object
-                    required: [active]
-                    properties:
-                      active:
-                        const: true
-        "401":
-          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
-        "403":
-          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
 components:
   securitySchemes:
     bearer:

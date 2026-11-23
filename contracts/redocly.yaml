@@ -7,9 +7,3 @@ rules:
   no-server-example.com: off
   # common.yaml is a component library: product APIs use these, this file does not.
   no-unused-components: off
-apis:
-  authn:
-    root: ../services/authn/api/openapi.yaml
-    rules:
-      # Login and callback answer only with redirects.
-      operation-2xx-response: off
