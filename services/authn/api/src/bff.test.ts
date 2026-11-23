@@ -374,6 +374,40 @@ test(
 );
 
 test(
+  "starting sign-in expires the oldest pending logins so the cookie header stays bounded",
+  { skip },
+  async () => {
+    const pending = ["old1", "old2", "old3"].map(
+      (s) => `${LOGIN_COOKIE_PREFIX}${s}=x`,
+    );
+    const res = await get(
+      "/auth/login/ping",
+      [...pending, `${SESSION_COOKIE}=keep`].join("; "),
+    );
+    assert.equal(res.status, 302);
+    const set = res.headers.getSetCookie();
+    const cleared = (s: string) =>
+      set.some((c) => c.startsWith(`${LOGIN_COOKIE_PREFIX}${s}=;`));
+    assert.ok(cleared("old1"));
+    assert.ok(!cleared("old2") && !cleared("old3"));
+    assert.ok(!set.some((c) => c.startsWith(`${SESSION_COOKIE}=`)));
+    assert.equal(
+      set.filter(
+        (c) => c.startsWith(LOGIN_COOKIE_PREFIX) && !c.includes("Max-Age=0"),
+      ).length,
+      1,
+    );
+    const underCap = await get(
+      "/auth/login/ping",
+      [pending[0], pending[1], pending[1]].join("; "),
+    );
+    assert.ok(
+      !underCap.headers.getSetCookie().some((c) => c.includes("Max-Age=0")),
+    );
+  },
+);
+
+test(
   "a callback without its login cookie, or for another provider, creates no session",
   { skip },
   async () => {

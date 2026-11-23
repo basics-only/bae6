@@ -74,6 +74,22 @@ export function readCookie(
   return undefined;
 }
 
+const MAX_PENDING_LOGINS = 3;
+
+const pendingLoginsOldestFirst = (req: IncomingMessage) => [
+  ...new Set(
+    (req.headers.cookie ?? "")
+      .split(";")
+      .filter((part) => part.indexOf("=") > 0)
+      .map((part) => part.slice(0, part.indexOf("=")).trim())
+      .filter(
+        (name) =>
+          name.startsWith(LOGIN_COOKIE_PREFIX) &&
+          OPAQUE.test(name.slice(LOGIN_COOKIE_PREFIX.length)),
+      ),
+  ),
+];
+
 const cookie = (name: string, value: string, maxAge: number, httpOnly = true) =>
   `${name}=${value}; Path=/; Max-Age=${maxAge};${httpOnly ? " HttpOnly;" : ""} Secure; SameSite=Lax`;
 
@@ -163,13 +179,21 @@ export function createBffRoutes(deps: BffDeps) {
       connectionId: connection.id,
       returnTo,
     };
+    const older = pendingLoginsOldestFirst(req);
+    const stale = older.slice(
+      0,
+      Math.max(0, older.length - (MAX_PENDING_LOGINS - 1)),
+    );
     res.writeHead(302, {
       location: to.toString(),
-      "set-cookie": cookie(
-        `${LOGIN_COOKIE_PREFIX}${pending.state}`,
-        Buffer.from(JSON.stringify(state)).toString("base64url"),
-        LOGIN_TTL_SECONDS,
-      ),
+      "set-cookie": [
+        ...stale.map((name) => cookie(name, "", 0)),
+        cookie(
+          `${LOGIN_COOKIE_PREFIX}${pending.state}`,
+          Buffer.from(JSON.stringify(state)).toString("base64url"),
+          LOGIN_TTL_SECONDS,
+        ),
+      ],
       "cache-control": "no-store",
     });
     res.end();
