@@ -19,5 +19,10 @@
 | [0015](0015-huggingface-provider.md) | Hugging Face provider for open models |
 | [0016](0016-single-monorepo.md) | Single monorepo |
 | [0017](0017-check-path-cache-window.md) | Check-path cache window |
+| [0018](0018-tenancy-and-delegated-administration.md) | Tenancy, org hierarchy and delegated administration |
+| [0019](0019-authn-and-internal-tokens.md) | bae6-authn and internal tokens |
+| [0020](0020-tenant-store-and-guardrails.md) | Tenant store and inherited guardrails |
+| [0021](0021-principals.md) | Principals |
+| [0022](0022-delegation-and-execution-context.md) | Delegation and execution context |
 
 Product-internal decisions live under `docs/<product>/`. Copy `0000-template.md` for a new one.
