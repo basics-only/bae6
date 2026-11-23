@@ -1,0 +1,18 @@
+events {}
+
+http {
+  resolver ${NGINX_LOCAL_RESOLVERS} valid=5s;
+
+  server {
+    listen 80;
+    proxy_set_header Host $http_host;
+    set $authn http://authn:8080;
+    set $console http://console:8080;
+    location /auth/ {
+      proxy_pass $authn;
+    }
+    location / {
+      proxy_pass $console;
+    }
+  }
+}

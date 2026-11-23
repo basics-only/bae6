@@ -404,6 +404,61 @@ test(
 );
 
 test(
+  "with http allowed, sign-in and logout use the http origin",
+  { skip },
+  async () => {
+    const dev = createAuthnApi({
+      ping: async () => {},
+      requestTimeoutMs: 5000,
+      routes: createBffRoutes({
+        db,
+        provider: async (_connection, redirectUri) => {
+          redirectUris.push(redirectUri);
+          return provider;
+        },
+        tenantsByHost,
+        sessionTtlSeconds: 3600,
+        issuer: AUTHN_ISSUER,
+        allowHttp: true,
+      }),
+    });
+    await new Promise<void>((r) => dev.listen(0, "127.0.0.1", r));
+    const host = `127.0.0.1:${(dev.address() as AddressInfo).port}`;
+    tenantsByHost.set(host, "acme");
+    try {
+      const at = (path: string, init: RequestInit = {}) =>
+        fetch(`http://${host}${path}`, { redirect: "manual", ...init });
+      const begin = await at("/auth/login/ping");
+      assert.equal(begin.status, 302);
+      assert.equal(redirectUris.at(-1), `http://${host}/auth/callback/ping`);
+      const state = `state${n}`;
+      const login = cookieFrom(begin, `${LOGIN_COOKIE_PREFIX}${state}`);
+      assert.ok(login);
+      const done = await at(`/auth/callback/ping?code=httpdev&state=${state}`, {
+        headers: {
+          cookie: `${LOGIN_COOKIE_PREFIX}${state}=${login.value}`,
+        },
+      });
+      assert.equal(done.status, 303);
+      const csrf = cookieFrom(done, CSRF_COOKIE)?.value ?? "";
+      const out = await at("/auth/logout", {
+        method: "POST",
+        headers: {
+          cookie: sessionCookie(done),
+          origin: `http://${host}`,
+          "x-csrf-token": csrf,
+        },
+      });
+      assert.equal(out.status, 204);
+    } finally {
+      tenantsByHost.delete(host);
+      dev.closeAllConnections();
+      await new Promise<void>((r) => dev.close(() => r()));
+    }
+  },
+);
+
+test(
   "sign-in refuses open redirects, unknown or disabled providers, and unknown hosts",
   { skip },
   async () => {

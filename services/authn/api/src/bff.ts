@@ -145,7 +145,10 @@ export function createBffRoutes(deps: BffDeps) {
     const host = hostOf(req);
     const tenantId = deps.tenantsByHost.get(host);
     if (!tenantId) throw new HttpError(404, "not_found", "Not found.");
-    return { tenantId, origin: `https://${host}` };
+    return {
+      tenantId,
+      origin: `${deps.allowHttp ? "http" : "https"}://${host}`,
+    };
   }
 
   async function activeConnection(tenantId: string, id: string) {

@@ -6,7 +6,8 @@
       "redirectUris": [
         "http://localhost:8092/auth/callback/entra",
         "http://localhost:8092/auth/callback/okta",
-        "http://localhost:8092/auth/callback/ping"
+        "http://localhost:8092/auth/callback/ping",
+        "http://acme.bae6.localhost:8091/auth/callback/entra"
       ]
     }
   ],
