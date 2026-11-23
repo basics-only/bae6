@@ -142,7 +142,7 @@ async function allActive(
   );
 }
 
-async function sessionLive(
+export async function sessionLive(
   db: Pool,
   tenantId: string,
   principalId: string,

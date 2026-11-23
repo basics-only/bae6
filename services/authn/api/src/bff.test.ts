@@ -1,22 +1,33 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import type pg from "pg";
 import {
+  AUTHN_AUDIENCE,
   CSRF_COOKIE,
   createBffRoutes,
   LOGIN_COOKIE_PREFIX,
   type LoginProvider,
 } from "./bff.js";
 import { migratedTestDatabase } from "./db/test-database.js";
+import { localSigner, syncKeys } from "./keys.js";
 import { OidcError } from "./oidc.js";
 import { PrincipalError, setPrincipalStatus } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { createSession, readSession, SESSION_COOKIE } from "./sessions.js";
+import { mintToken } from "./tokens.js";
 
 const url = process.env.BAE6_DATABASE_URL;
 const skip = url ? false : "BAE6_DATABASE_URL not set";
 const ISSUER = "https://ping.example/acme";
+const AUTHN_ISSUER = "https://authn.bae6.test";
+const signer = localSigner(
+  generateKeyPairSync("ec", { namedCurve: "P-256" })
+    .privateKey.export({ type: "pkcs8", format: "pem" })
+    .toString(),
+);
+const signers = new Map([[signer.kid, signer]]);
 const tenantsByHost = new Map<string, string>();
 let db: pg.Pool;
 let close: () => Promise<void>;
@@ -69,6 +80,7 @@ before(async () => {
             ('globex', 'ping', 'pingfederate', 'https://ping.example/globex', 'c', 's', true, 'active')`,
     [ISSUER],
   );
+  await syncKeys(db, signers);
   server = createAuthnApi({
     ping: async () => {},
     requestTimeoutMs: 5000,
@@ -80,6 +92,7 @@ before(async () => {
       },
       tenantsByHost,
       sessionTtlSeconds: 3600,
+      issuer: AUTHN_ISSUER,
     }),
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -185,6 +198,64 @@ test(
     assert.equal(body.principal.status, "active");
     assert.match(body.principal.id, /^prn_[0-9a-f]{32}$/);
     assert.deepEqual(body.orgPath, ["acme"]);
+  },
+);
+
+test(
+  "providers lists this tenant's active connections with display names",
+  { skip },
+  async () => {
+    await db.query(
+      "UPDATE provider_connections SET display_name = 'Acme SSO' WHERE tenant_id = 'acme' AND id = 'ping'",
+    );
+    const res = await get("/auth/providers");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      providers: [
+        { id: "ping", kind: "pingfederate", displayName: "Acme SSO" },
+        { id: "ping2", kind: "pingfederate", displayName: "ping2" },
+      ],
+    });
+    const other = await fetch(
+      `http://localhost:${new URL(base).port}/auth/providers`,
+    );
+    assert.equal(other.status, 404);
+  },
+);
+
+test(
+  "a bae6 token issued to authn identifies its principal on /auth/me",
+  { skip },
+  async () => {
+    const cookie = sessionCookie(await signIn("hank"));
+    const s = await readSession(db, cookie.split("=")[1]);
+    assert.ok(s);
+    const token = async (aud: string, session_id = s.id) =>
+      (
+        await mintToken(db, signers, AUTHN_ISSUER, {
+          aud,
+          sub: s.principalId,
+          txn: "req-1",
+          tenant_id: "acme",
+          org_path: ["acme"],
+          principal_type: "user",
+          session_id,
+        })
+      ).token;
+    const me = (authorization: string) =>
+      fetch(`http://localhost:${new URL(base).port}/auth/me`, {
+        headers: { authorization },
+      });
+    const ok = await me(`Bearer ${await token(AUTHN_AUDIENCE)}`);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).principal.id, s.principalId);
+    for (const bad of [
+      `Bearer ${await token("gateway")}`,
+      `Bearer ${await token(AUTHN_AUDIENCE, `ses_${"9".repeat(32)}`)}`,
+      "Bearer not-a-token",
+      "Basic abc",
+    ])
+      assert.equal((await me(bad)).status, 401, bad.slice(0, 20));
   },
 );
 
