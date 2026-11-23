@@ -1,0 +1,38 @@
+name: load
+
+on:
+  workflow_dispatch:
+    inputs:
+      concurrency:
+        description: Comma-separated concurrent users per run
+        default: "1,16,64,256"
+      seconds:
+        description: Seconds per scenario and level
+        default: "20"
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CONTAINER_RUNTIME: docker
+      PROFILE: context
+      LOAD_CONCURRENCY: ${{ inputs.concurrency || '1,16,64,256' }}
+      LOAD_SECONDS: ${{ inputs.seconds || '20' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: make up
+      - run: node e2e/load/load.mjs | tee load.jsonl
+      - run: docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-${{ github.run_id }}
+          path: load.jsonl
+      - if: always()
+        run: make down
