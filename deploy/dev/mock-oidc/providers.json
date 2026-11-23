@@ -1,0 +1,109 @@
+{
+  "clients": [
+    {
+      "id": "bae6-authn",
+      "secret": "dev-only-authn-client",
+      "redirectUris": [
+        "http://localhost:8092/auth/callback/entra",
+        "http://localhost:8092/auth/callback/okta",
+        "http://localhost:8092/auth/callback/ping"
+      ]
+    }
+  ],
+  "realms": [
+    {
+      "kind": "entra",
+      "id": "11111111-1111-4111-8111-111111111111",
+      "groupOverageLimit": 5,
+      "users": [
+        {
+          "login": "alice@acme.example",
+          "sub": "aW5mb3JtYXRpb24tYWxpY2UtcGFpcndpc2U",
+          "claims": {
+            "ver": "2.0",
+            "tid": "11111111-1111-4111-8111-111111111111",
+            "oid": "a1a1a1a1-0000-4000-8000-000000000001",
+            "preferred_username": "alice@acme.example",
+            "name": "Alice",
+            "groups": [
+              "9e1f0000-0000-4000-8000-000000000001",
+              "9e1f0000-0000-4000-8000-000000000002"
+            ]
+          }
+        },
+        {
+          "login": "bob@acme.example",
+          "sub": "aW5mb3JtYXRpb24tYm9iLXBhaXJ3aXNlLXN1Yg",
+          "claims": {
+            "ver": "2.0",
+            "tid": "11111111-1111-4111-8111-111111111111",
+            "oid": "b2b2b2b2-0000-4000-8000-000000000002",
+            "preferred_username": "bob@acme.example",
+            "name": "Bob",
+            "groups": [
+              "9e1f0000-0000-4000-8000-000000000001",
+              "9e1f0000-0000-4000-8000-000000000002",
+              "9e1f0000-0000-4000-8000-000000000003",
+              "9e1f0000-0000-4000-8000-000000000004",
+              "9e1f0000-0000-4000-8000-000000000005",
+              "9e1f0000-0000-4000-8000-000000000006"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "entra",
+      "id": "22222222-2222-4222-8222-222222222222",
+      "users": [
+        {
+          "login": "erin@globex.example",
+          "sub": "aW5mb3JtYXRpb24tZXJpbi1wYWlyd2lzZQ",
+          "claims": {
+            "ver": "2.0",
+            "tid": "22222222-2222-4222-8222-222222222222",
+            "oid": "e5e5e5e5-0000-4000-8000-000000000005",
+            "preferred_username": "erin@globex.example",
+            "name": "Erin",
+            "groups": ["9e1f0000-0000-4000-8000-0000000000ff"]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "okta",
+      "id": "aus1bae6default",
+      "audience": "api://bae6",
+      "users": [
+        {
+          "login": "carol@acme.example",
+          "sub": "00u1carol0000000000",
+          "claims": {
+            "ver": 1,
+            "idp": "00o1acme0000000000",
+            "preferred_username": "carol@acme.example",
+            "name": "Carol",
+            "groups": ["Everyone", "Engineering"]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "ping",
+      "id": "acme",
+      "audience": "bae6",
+      "users": [
+        {
+          "login": "dave@acme.example",
+          "sub": "dave",
+          "claims": {
+            "email": "dave@acme.example",
+            "memberOf": ["CN=Finance,OU=Groups,DC=acme,DC=example"],
+            "employeeId": "E1001",
+            "costCenter": "CC-42"
+          }
+        }
+      ]
+    }
+  ]
+}

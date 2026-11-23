@@ -145,7 +145,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/dev/mock-oidc/Dockerfile
-    profiles: [ai, context, console, all]
+    profiles: [authn, ai, context, console, all]
     environment:
       NODE_ENV: development
       MOCK_OIDC_ISSUER: http://mock-oidc:8080
