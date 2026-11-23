@@ -10,6 +10,7 @@ import {
   registerKey,
   type Signer,
   syncKeys,
+  unretireKey,
 } from "./keys.js";
 
 const url = process.env.BAE6_DATABASE_URL;
@@ -157,6 +158,46 @@ test(
     assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
       [keyA.kid]: "active",
       [keyB.kid]: "next",
+    });
+  },
+);
+
+test(
+  "a retired key comes back only by an explicit unretire, then the usual promotion",
+  { skip },
+  async () => {
+    await db.query("TRUNCATE signing_keys");
+    const keyA = p256();
+    const keyB = p256();
+    const both = new Map<string, Signer>([
+      [keyA.kid, keyA],
+      [keyB.kid, keyB],
+    ]);
+    const age = () =>
+      db.query(
+        "UPDATE signing_keys SET created_at = now() - interval '1 hour'",
+      );
+    await syncKeys(db, both, keyA.kid);
+    await age();
+    await syncKeys(db, both, keyB.kid);
+
+    await assert.rejects(syncKeys(db, both, keyA.kid), /unretire/);
+    assert.equal((await activeSigner(db, both)).kid, keyB.kid);
+
+    await assert.rejects(unretireKey(db, keyB.kid), KeyError);
+    const keyC = p256();
+    await registerKey(db, keyC);
+    await assert.rejects(unretireKey(db, keyA.kid), /another next key/);
+    await db.query("DELETE FROM signing_keys WHERE kid = $1", [keyC.kid]);
+    await unretireKey(db, keyA.kid);
+    assert.deepEqual(await syncKeys(db, both, keyA.kid), {
+      [keyA.kid]: "next",
+      [keyB.kid]: "active",
+    });
+    await age();
+    assert.deepEqual(await syncKeys(db, both, keyA.kid), {
+      [keyA.kid]: "active",
+      [keyB.kid]: "retired",
     });
   },
 );

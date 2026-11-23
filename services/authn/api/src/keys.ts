@@ -125,6 +125,23 @@ export async function promoteNextKey(
   }
 }
 
+export async function unretireKey(db: Pool, kid: string): Promise<void> {
+  try {
+    const { rowCount } = await db.query(
+      `UPDATE signing_keys SET status = 'next', retired_at = NULL, created_at = now()
+        WHERE kid = $1 AND status = 'retired'`,
+      [kid],
+    );
+    if (rowCount !== 1) throw new KeyError(`key ${kid} is not retired`);
+  } catch (err) {
+    if ((err as { code?: string }).code === "23505")
+      throw new KeyError("another next key is already published", {
+        cause: err,
+      });
+    throw err;
+  }
+}
+
 export async function syncKeys(
   db: Pool,
   signers: ReadonlyMap<string, Signer>,
@@ -162,6 +179,10 @@ export async function syncKeys(
   );
   const status = new Map(rows.map((r) => [r.kid, r.status]));
   const wantedStatus = status.get(activeKid) ?? "unpublished";
+  if (wantedStatus === "retired")
+    throw new KeyError(
+      `configured active key ${activeKid} is retired; to rotate back to it, run "node dist/keys-cli.js unretire ${activeKid}" and keep the current active key in BAE6_AUTHN_SIGNING_KEYS until ${activeKid} is promoted`,
+    );
   if (wantedStatus !== "active" && wantedStatus !== "next")
     throw new KeyError(`configured active key ${activeKid} is ${wantedStatus}`);
   return Object.fromEntries(

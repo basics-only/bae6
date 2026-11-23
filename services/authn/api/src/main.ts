@@ -7,6 +7,7 @@ import { migrate } from "./db/migrate.js";
 import { parseTokenTargets } from "./exchange.js";
 import {
   activeSigner,
+  KeyError,
   localSigner,
   MAX_PUBLISHED_KEYS,
   type Signer,
@@ -215,7 +216,10 @@ async function rotateKeys() {
     if (state !== keyState) log({ msg: "signing_keys", keys });
     keyState = state;
   } catch (err) {
-    log({ msg: "signing_keys_error", error: (err as Error).name });
+    log({
+      msg: "signing_keys_error",
+      error: err instanceof KeyError ? err.message : (err as Error).name,
+    });
   }
 }
 await rotateKeys();
