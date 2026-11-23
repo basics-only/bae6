@@ -183,7 +183,9 @@ export async function exchangeToken(
     { id: subject.sub, type: subject.principal_type },
   ];
   if (subject.act) principals.push({ id: subject.act.sub });
+  // shortcut: delegations aren't stored, so revocation can't be checked; refuse until they are.
   if (
+    subject.delegation_id !== undefined ||
     subject.exp <= Math.floor(Date.now() / 1000) ||
     !(await allActive(deps.db, subject.tenant_id, principals)) ||
     (subject.session_id !== undefined &&

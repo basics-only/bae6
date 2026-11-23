@@ -165,8 +165,10 @@ paths:
         `subject_token` is a bae6 session cookie value (`urn:bae6:params:oauth:token-type:session`),
         or a bae6 token being re-exchanged for another audience. The bearer is a client
         secret: a session client's for sessions, and for re-exchange the secret of the
-        service the subject token was issued to. Re-exchange keeps the actor and delegation
-        and can only narrow them. With `delegation_id`, `actor_token` is the agent's own
+        service the subject token was issued to. Re-exchange keeps the actor and can only
+        narrow it; a subject token carrying `delegation_id` is refused with `invalid_request`
+        until delegation revocation can be checked. `actor_token` is not accepted yet; when it is,
+        with `delegation_id` it will be the agent's own
         credential and the delegation must name that actor.
       security:
         - bearer: []
