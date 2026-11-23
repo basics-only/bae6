@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import {
+  afterCacheWindow,
   type Call,
   client,
   fixtureFiles,
@@ -191,7 +192,7 @@ test("assertions that only allow, or only deny, are not enough to approve a mode
   assert.equal((await models(app)).length, 1);
 });
 
-test("an approved model takes effect and rollback restores the earlier decisions", async () => {
+test("an approved model takes effect and rollback restores the earlier decisions within the cache window", async () => {
   const app = await appWithTuples();
   const first = await activeModel(app);
   assert.equal((await bobReads(app)).status, "allow");
@@ -201,6 +202,7 @@ test("an approved model takes effect and rollback restores the earlier decisions
   const second = done.body.id as string;
   assert.notEqual(second, first);
   assert.equal(await activeModel(app), second);
+  await afterCacheWindow();
   const after = await bobReads(app);
   assert.equal(after.status, "deny");
   assert.equal(after.modelId, second);
@@ -211,6 +213,7 @@ test("an approved model takes effect and rollback restores the earlier decisions
   });
   assert.equal(back.status, 200);
   assert.equal(await activeModel(app), first);
+  await afterCacheWindow();
   const restored = await bobReads(app);
   assert.equal(restored.status, "allow");
   assert.equal(restored.modelId, first);

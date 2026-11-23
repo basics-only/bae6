@@ -78,11 +78,21 @@ async function freePort(): Promise<number> {
   return address.port;
 }
 
+/** Short check-path cache window, so tests can wait it out (ADR-0017). */
+export const LOOKUP_CACHE_MS = 300;
+export const afterCacheWindow = () =>
+  new Promise((r) => setTimeout(r, LOOKUP_CACHE_MS + 200));
+
 function spawnApi(env: Record<string, string>, port: number) {
   const output: string[] = [];
   const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
     cwd: API_DIR,
-    env: { ...process.env, PORT: String(port), ...env },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      BAE6_LOOKUP_CACHE_MS: String(LOOKUP_CACHE_MS),
+      ...env,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   for (const stream of [child.stdout, child.stderr]) {

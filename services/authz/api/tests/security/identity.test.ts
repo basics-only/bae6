@@ -6,6 +6,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import {
   ALICE_READS,
   adminStore,
+  afterCacheWindow,
   type Call,
   client,
   fixtureFiles,
@@ -274,7 +275,7 @@ test("a valid workload that is not bound to the application is refused", async (
   assert.equal(res.status, 403);
 });
 
-test("a workload loses access on its next check once it is unbound", async () => {
+test("a workload loses access within the cache window once unbound, and regains it once rebound", async () => {
   const workload = await sign();
   const user = await sign({ sub: "alice" });
   assert.equal((await check(workload, user)).status, 200);
@@ -285,9 +286,11 @@ test("a workload loses access on its next check once it is unbound", async () =>
     { token: PLATFORM },
   );
   assert.equal(unbound.status, 204);
+  await afterCacheWindow();
   assert.equal((await check(workload, user)).status, 403);
 
   await bind(app);
+  await afterCacheWindow();
   assert.equal((await check(workload, user)).status, 200);
 });
 

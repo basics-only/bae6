@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import {
   ALICE_READS,
+  afterCacheWindow,
   type Call,
   client,
   type Fault,
@@ -158,7 +159,9 @@ test("with OpenFGA unresponsive, checks time out as indeterminate within the bou
   assert.ok(await allowsAgain(), "access resumes when OpenFGA answers again");
 });
 
-test("with Postgres down, checks are indeterminate, readiness fails, and nothing is written", async () => {
+test("with Postgres down past the cache window, checks are indeterminate, readiness fails, and nothing is written", async () => {
+  postgres.set("drop");
+  await afterCacheWindow();
   const { seen, one } = await decisionsDuring("drop", postgres);
   assert.deepEqual([...new Set(seen)], ["indeterminate"]);
   assert.equal(one.body.code, "backend_error");

@@ -18,5 +18,6 @@
 | [0014](0014-model-routing.md) | Automatic model routing |
 | [0015](0015-huggingface-provider.md) | Hugging Face provider for open models |
 | [0016](0016-single-monorepo.md) | Single monorepo |
+| [0017](0017-check-path-cache-window.md) | Check-path cache window |
 
 Product-internal decisions live under `docs/<product>/`. Copy `0000-template.md` for a new one.
