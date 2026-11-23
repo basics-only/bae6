@@ -12,6 +12,8 @@ export const TOKEN_TTL_SECONDS = 300;
 export const CLOCK_SKEW_SECONDS = 60;
 export const JWKS_MAX_AGE_SECONDS = 300;
 export const MAX_PUBLISHED_KEYS = 10;
+// Twice the promotion delay, so replicas mid-rollout promote a new key before older ones drop it.
+const ABANDONED_NEXT_SECONDS = 2 * (JWKS_MAX_AGE_SECONDS + CLOCK_SKEW_SECONDS);
 
 export type SigningAlg = "ES256" | "EdDSA";
 
@@ -137,8 +139,9 @@ export async function syncKeys(
   await db.query(
     `DELETE FROM signing_keys
       WHERE status = 'next' AND kid <> $1
-        AND NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')`,
-    [activeKid],
+        AND (NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')
+             OR (kid <> ALL($2) AND created_at <= now() - make_interval(secs => $3)))`,
+    [activeKid, [...signers.keys()], ABANDONED_NEXT_SECONDS],
   );
   await register(wanted);
   await db.query(

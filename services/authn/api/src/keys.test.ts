@@ -74,7 +74,7 @@ test(
 );
 
 test(
-  "sync fails loudly when the configured key cannot become active",
+  "sync fails loudly when another configured key holds the next slot",
   { skip },
   async () => {
     await db.query("TRUNCATE signing_keys");
@@ -90,5 +90,73 @@ test(
     await registerKey(db, keyB);
     await assert.rejects(syncKeys(db, signers, keyC.kid), KeyError);
     assert.equal((await activeSigner(db, signers)).kid, keyA.kid);
+  },
+);
+
+test(
+  "a next key nobody configures any more stops blocking the next one",
+  { skip },
+  async () => {
+    await db.query("TRUNCATE signing_keys");
+    const keyA = p256();
+    const keyB = p256();
+    const keyC = p256();
+    await syncKeys(db, new Map([[keyA.kid, keyA]]), keyA.kid);
+    await registerKey(db, keyB);
+    const signers = new Map<string, Signer>([
+      [keyA.kid, keyA],
+      [keyC.kid, keyC],
+    ]);
+    assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
+      [keyA.kid]: "active",
+      [keyC.kid]: "unpublished",
+    });
+    await db.query(
+      "UPDATE signing_keys SET created_at = now() - interval '1 hour' WHERE kid = $1",
+      [keyB.kid],
+    );
+    assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
+      [keyA.kid]: "active",
+      [keyC.kid]: "next",
+    });
+  },
+);
+
+test(
+  "a replica on older config leaves a recently published next key alone",
+  { skip },
+  async () => {
+    await db.query("TRUNCATE signing_keys");
+    const keyA = p256();
+    const keyC = p256();
+    const newer = new Map<string, Signer>([
+      [keyA.kid, keyA],
+      [keyC.kid, keyC],
+    ]);
+    await syncKeys(db, newer, keyA.kid);
+    await syncKeys(db, new Map([[keyA.kid, keyA]]), keyA.kid);
+    assert.deepEqual(await syncKeys(db, newer, keyA.kid), {
+      [keyA.kid]: "active",
+      [keyC.kid]: "next",
+    });
+  },
+);
+
+test(
+  "a configured next key is kept while the active key stays active",
+  { skip },
+  async () => {
+    await db.query("TRUNCATE signing_keys");
+    const keyA = p256();
+    const keyB = p256();
+    const signers = new Map<string, Signer>([
+      [keyA.kid, keyA],
+      [keyB.kid, keyB],
+    ]);
+    await syncKeys(db, signers, keyA.kid);
+    assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
+      [keyA.kid]: "active",
+      [keyB.kid]: "next",
+    });
   },
 );
