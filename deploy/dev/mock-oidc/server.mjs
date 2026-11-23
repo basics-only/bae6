@@ -12,17 +12,31 @@ if (!issuer)
     "MOCK_OIDC_ISSUER is required (the iss value services trust)",
   );
 
-const { publicKey, privateKey } = await generateKeyPair("RS256");
-const jwks = JSON.stringify({
-  keys: [
-    {
-      ...(await exportJWK(publicKey)),
-      kid: "mock-1",
-      alg: "RS256",
-      use: "sig",
-    },
-  ],
-});
+async function newIssuer(iss) {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = await exportJWK(publicKey);
+  return {
+    iss,
+    privateKey,
+    jwks: JSON.stringify({
+      keys: [{ ...jwk, kid: "mock-1", alg: "RS256", use: "sig" }],
+    }),
+  };
+}
+
+const root = await newIssuer(issuer);
+
+// `/orgs/<org>/...` is a separate issuer with its own key, so one container can stand in for many tenants.
+const ORG = /^\/orgs\/([a-z0-9][a-z0-9-]{0,62})(\/.*)$/;
+const MAX_ORGS = 64;
+const orgs = new Map();
+async function orgIssuer(org) {
+  if (!orgs.has(org)) {
+    if (orgs.size >= MAX_ORGS) return undefined;
+    orgs.set(org, newIssuer(`${issuer}/orgs/${org}`));
+  }
+  return orgs.get(org);
+}
 
 async function body(req) {
   let raw = "";
@@ -47,15 +61,15 @@ function clientCredentials(raw) {
   };
 }
 
-const sign = (claims, sub, aud, ttlSeconds) =>
+const sign = (claims, sub, aud, ttlSeconds, from = root) =>
   new SignJWT(claims)
     .setProtectedHeader({ alg: "RS256", kid: "mock-1" })
-    .setIssuer(issuer)
+    .setIssuer(from.iss)
     .setSubject(sub)
     .setAudience(aud)
     .setIssuedAt()
     .setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds)
-    .sign(privateKey);
+    .sign(from.privateKey);
 
 // Browser login: only on when MOCK_OIDC_PUBLIC_URL (how the browser reaches this server) is set. It signs in
 // MOCK_OIDC_LOGIN_SUBJECT without asking, so it is for local development only.
@@ -130,7 +144,11 @@ createServer(async (req, res) => {
     res.end(typeof value === "string" ? value : JSON.stringify(value));
   };
   const url = new URL(req.url, "http://mock");
-  if (publicUrl && req.method === "GET") {
+  const org = ORG.exec(url.pathname);
+  const from = org ? await orgIssuer(org[1]) : root;
+  if (!from) return send(429, { code: "too_many_orgs", requestId: "mock" });
+  const path = org ? org[2] : req.url;
+  if (!org && publicUrl && req.method === "GET") {
     if (url.pathname === "/.well-known/openid-configuration")
       return send(200, {
         issuer,
@@ -140,11 +158,11 @@ createServer(async (req, res) => {
       });
     if (url.pathname === "/authorize") return authorize(url, send, res);
   }
-  if (req.method === "GET" && req.url === "/.well-known/jwks.json")
-    return send(200, jwks);
+  if (req.method === "GET" && path === "/.well-known/jwks.json")
+    return send(200, from.jwks);
   if (req.method === "GET" && req.url === "/health/live")
     return send(200, { status: "ok" });
-  if (req.method !== "POST" || req.url !== "/token")
+  if (req.method !== "POST" || path !== "/token")
     return send(404, {
       code: "not_found",
       message: "Not found.",
@@ -154,6 +172,7 @@ createServer(async (req, res) => {
     const raw = await body(req);
     const form = raw !== "" && !raw.trimStart().startsWith("{");
     if (
+      !org &&
       publicUrl &&
       form &&
       new URLSearchParams(raw).get("grant_type") === "authorization_code"
@@ -184,6 +203,7 @@ createServer(async (req, res) => {
       sub,
       aud,
       ttlSeconds,
+      from,
     );
     send(200, {
       access_token: token,

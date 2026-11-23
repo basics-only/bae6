@@ -36,7 +36,9 @@ integration:
 	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8180 pnpm --filter @bae6/authz test:integration
 
 demo:
-	node --test e2e/integration/demo.test.mjs e2e/integration/workers.test.mjs e2e/integration/console.test.mjs
+	node --test e2e/integration/demo.test.mjs e2e/integration/workers.test.mjs e2e/integration/console.test.mjs e2e/integration/orgs.test.mjs
+
+ORGS_OVERRIDE = e2e/orgs/compose.generated.json
 
 # Each package's database-backed tests get a fresh database, apart from the ones the running services use.
 DB_TESTS = services/authz/api:authz_test:test \
@@ -55,7 +57,8 @@ db-test:
 	done
 
 up:
-	$(COMPOSE) up --build -d --wait
+	$(COMPOSE) config --format json | node e2e/orgs/compose.mjs > $(ORGS_OVERRIDE)
+	$(COMPOSE) -f $(ORGS_OVERRIDE) up --build -d --wait
 
 down:
 	$(COMPOSE) down
