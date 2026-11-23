@@ -130,17 +130,26 @@ export async function syncKeys(
 ): Promise<Record<string, string>> {
   const wanted = signers.get(activeKid);
   if (!wanted) throw new KeyError(`no signer configured for ${activeKid}`);
-  for (const signer of signers.values())
-    await registerKey(db, signer).catch((err) => {
+  const register = (signer: Signer) =>
+    registerKey(db, signer).catch((err) => {
       if (!(err instanceof KeyError)) throw err;
     });
-  const kids = [...signers.keys()];
+  await db.query(
+    `DELETE FROM signing_keys
+      WHERE status = 'next' AND kid <> $1
+        AND NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')`,
+    [activeKid],
+  );
+  await register(wanted);
   await db.query(
     `UPDATE signing_keys SET status = 'active'
       WHERE status = 'next' AND kid = $1
         AND NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')`,
     [activeKid],
   );
+  for (const signer of signers.values())
+    if (signer !== wanted) await register(signer);
+  const kids = [...signers.keys()];
   await promoteNextKey(db, new Map([[activeKid, wanted]])).catch((err) => {
     if (!(err instanceof KeyError)) throw err;
   });
@@ -149,6 +158,9 @@ export async function syncKeys(
     [kids],
   );
   const status = new Map(rows.map((r) => [r.kid, r.status]));
+  const wantedStatus = status.get(activeKid) ?? "unpublished";
+  if (wantedStatus !== "active" && wantedStatus !== "next")
+    throw new KeyError(`configured active key ${activeKid} is ${wantedStatus}`);
   return Object.fromEntries(
     kids.map((kid) => [kid, status.get(kid) ?? "unpublished"]),
   );
