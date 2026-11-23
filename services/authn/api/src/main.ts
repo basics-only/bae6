@@ -36,6 +36,11 @@ function required(name: string) {
   return v;
 }
 
+const allowHttp = env.BAE6_AUTHN_ALLOW_HTTP === "true";
+if (allowHttp && env.NODE_ENV !== "development")
+  throw new Error("BAE6_AUTHN_ALLOW_HTTP needs NODE_ENV=development");
+if (allowHttp) log({ msg: "insecure_dev_flag", flag: "BAE6_AUTHN_ALLOW_HTTP" });
+
 const port = int("PORT", 8080, 1, 65535);
 const poolMax = int("BAE6_AUTHN_DB_POOL_MAX", 10, 1, 100);
 const shutdownDelayMs = int("BAE6_SHUTDOWN_DELAY_MS", 0, 0, 15_000);
@@ -196,12 +201,15 @@ async function provider(
   ]);
   const cached = providers.get(key);
   if (cached) return cached;
-  const discovered = await OidcProvider.discover({
-    issuer: connection.issuer,
-    clientId: row.clientId,
-    clientSecret,
-    redirectUri,
-  });
+  const discovered = await OidcProvider.discover(
+    {
+      issuer: connection.issuer,
+      clientId: row.clientId,
+      clientSecret,
+      redirectUri,
+    },
+    { allowHttp },
+  );
   if (providers.size >= MAX_CACHED_PROVIDERS)
     providers.delete(providers.keys().next().value as string);
   providers.set(key, discovered);
@@ -232,6 +240,7 @@ const bff = createBffRoutes({
   tenantsByHost,
   sessionTtlSeconds,
   issuer,
+  allowHttp,
 });
 const tokens = createTokenRoutes({
   db: pool,

@@ -48,13 +48,15 @@ services:
       BAE6_AUTHN_DATABASE_URL: postgres://authn:${AUTHN_DB_PASSWORD:-dev-only-authn}@postgres:5432/authn
       BAE6_AUTHN_SECRETS_DIR: /run/secrets/authn
       BAE6_AUTHN_KEYS_DIR: /run/secrets/authn-keys
-      BAE6_AUTHN_TENANT_HOSTS: acme.bae6.localhost:8092=acme
+      BAE6_AUTHN_ALLOW_HTTP: "true"
+      BAE6_AUTHN_TENANT_HOSTS: acme.bae6.localhost:8091=acme
       BAE6_AUTHN_ISSUER: http://authn:8080
       BAE6_AUTHN_AUDIENCES: bae6-authn,bae6-authz,bae6-ai,eval-worker,agent-worker,data-api,embed-api,mcp-gateway,mcp-registry
       BAE6_AUTHN_SIGNING_KEYS: dev-signing.pem
       BAE6_AUTHN_SESSION_CLIENTS: console
     volumes:
       - authn-keys:/run/secrets/authn-keys:ro
+      - authn-secrets:/run/secrets/authn:ro
     ports:
       - "127.0.0.1:8092:8080"
     depends_on:
@@ -81,9 +83,53 @@ services:
         write("token-client-console", () => crypto.randomBytes(32).toString("base64url"));
         fs.copyFileSync("/keys/token-client-console", "/console/authn-client-secret");
         fs.chownSync("/console/authn-client-secret", 1000, 1000);
+        fs.writeFileSync("/secrets/mock-idp-authn-client", "dev-only-authn-client", { mode: 0o600 });
+        fs.chownSync("/secrets/mock-idp-authn-client", 1000, 1000);
     volumes:
       - authn-keys:/keys
       - console-authn:/console
+      - authn-secrets:/secrets
+
+  authn-seed:
+    image: localhost/bae6-authn-api:dev
+    profiles: [authn, console, all]
+    environment:
+      BAE6_AUTHN_DATABASE_URL: postgres://authn:${AUTHN_DB_PASSWORD:-dev-only-authn}@postgres:5432/authn
+    command:
+      - node
+      - -e
+      - |
+        const pg = require("pg");
+        const db = new pg.Client({
+          connectionString: process.env.BAE6_AUTHN_DATABASE_URL,
+          connectionTimeoutMillis: 5000,
+          statement_timeout: 15000,
+        });
+        (async () => {
+          await db.connect();
+          // Dev only: the mock IdP is plain http, which the production schema refuses.
+          await db.query(`
+            ALTER TABLE provider_connections
+              DROP CONSTRAINT IF EXISTS provider_connections_issuer_check,
+              ADD CONSTRAINT provider_connections_issuer_check CHECK (issuer ~ '^https?://' AND length(issuer) <= 512);
+            ALTER TABLE external_identities
+              DROP CONSTRAINT IF EXISTS external_identities_issuer_check,
+              ADD CONSTRAINT external_identities_issuer_check CHECK (issuer ~ '^https?://' AND length(issuer) <= 512);
+            INSERT INTO provider_connections
+              (tenant_id, id, kind, issuer, client_id, client_secret_ref, jit_provisioning, display_name)
+            VALUES ('acme', 'entra', 'entra', 'http://mock-oidc:8080/entra/11111111-1111-4111-8111-111111111111/v2.0',
+                    'bae6-authn', 'mock-idp-authn-client', true, 'Mock Entra')
+            ON CONFLICT (tenant_id, id) DO UPDATE SET
+              kind = EXCLUDED.kind, issuer = EXCLUDED.issuer, client_id = EXCLUDED.client_id,
+              client_secret_ref = EXCLUDED.client_secret_ref, jit_provisioning = true,
+              display_name = EXCLUDED.display_name, status = 'active', updated_at = now()`);
+          await db.end();
+        })().catch((err) => {
+          console.error(err.message);
+          process.exit(1);
+        });
+    depends_on:
+      authn: {condition: service_healthy}
 
   openfga-migrate:
     image: openfga/openfga:v1.10.2
@@ -431,7 +477,7 @@ services:
       dockerfile: services/console/Dockerfile
     profiles: [console, all]
     environment:
-      ORIGIN: ${CONSOLE_ORIGIN:-http://localhost:8091}
+      ORIGIN: ${CONSOLE_ORIGIN:-http://acme.bae6.localhost:8091}
       BAE6_AUTHN_URL: http://authn:8080
       BAE6_AUTHN_CLIENT_SECRET_FILE: /run/secrets/authn/authn-client-secret
       BAE6_AUTHZ_URL: http://authz-api:8080
@@ -441,13 +487,27 @@ services:
       BAE6_MCP_REGISTRY_URL: http://mcp-registry:8080
     volumes:
       - console-authn:/run/secrets/authn:ro
-    ports:
-      - "127.0.0.1:8091:8080"
     depends_on:
+      authn: {condition: service_healthy}
+      authn-seed: {condition: service_completed_successfully}
+
+  console-edge:
+    image: nginx:1.27.3-alpine
+    profiles: [console, all]
+    environment:
+      NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+    volumes:
+      - ./compose/console/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+    ports:
+      - "127.0.0.1:8091:80"
+    depends_on:
+      console: {condition: service_started}
       authn: {condition: service_healthy}
 
 volumes:
   pgdata:
   tokens:
   authn-keys:
+  authn-secrets:
   console-authn:
