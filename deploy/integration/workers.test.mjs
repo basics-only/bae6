@@ -37,7 +37,10 @@ async function call(base, method, path, { jwt, body } = {}) {
 async function finished(base, path, jwt) {
   let run;
   for (const deadline = Date.now() + 60_000; run?.status !== "finished"; ) {
-    assert.ok(Date.now() < deadline, `run did not finish: ${JSON.stringify(run)}`);
+    assert.ok(
+      Date.now() < deadline,
+      `run did not finish: ${JSON.stringify(run)}`,
+    );
     await new Promise((r) => setTimeout(r, 500));
     run = (await call(base, "GET", path, { jwt })).body;
   }
@@ -55,7 +58,11 @@ test("an agent run is queued, answered by the model and readable afterwards", as
     body: { task: "summarize the handbook", model: "chat-mock" },
   });
   assert.equal(created.status, 202, JSON.stringify(created.body));
-  const run = await finished(url.agent, `/v1/agent-runs/${created.body.id}`, jwt);
+  const run = await finished(
+    url.agent,
+    `/v1/agent-runs/${created.body.id}`,
+    jwt,
+  );
   assert.equal(run.stop, "final");
   assert.match(run.text, /mock reply to: .*summarize the handbook/);
   assert.ok(run.tokens > 0);
@@ -110,7 +117,11 @@ test("an eval run scores every case and reports the mean", async () => {
 });
 
 test("a tool call goes through the gateway to an approved server and not to a revoked one", async () => {
-  const publish = await token("research-agent", "bae6-context-mcp", "mcp:publish");
+  const publish = await token(
+    "research-agent",
+    "bae6-context-mcp",
+    "mcp:publish",
+  );
   const approve = await token("reviewer", "bae6-context-mcp", "mcp:approve");
   const id = `echo-${Date.now().toString(36)}`;
   const created = await call(url.mcp, "POST", "/v1/servers", {
@@ -140,17 +151,18 @@ test("a tool call goes through the gateway to an approved server and not to a re
     200,
   );
 
-  const invoke = await token("research-agent", "bae6-context-mcp-gateway", "mcp:invoke");
+  const invoke = await token(
+    "research-agent",
+    "bae6-context-mcp-gateway",
+    "mcp:invoke",
+  );
   const path = `/v1/servers/${id}/tools/call`;
   const body = { tool: "echo", arguments: { q: "hi" } };
   const ok = await call(url.gateway, "POST", path, { jwt: invoke, body });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.match(JSON.stringify(ok.body), /echo: \{\\"q\\":\\"hi\\"\}/);
 
-  assert.equal(
-    (await call(url.gateway, "POST", path, { body })).status,
-    401,
-  );
+  assert.equal((await call(url.gateway, "POST", path, { body })).status, 401);
   await call(url.mcp, "POST", `/v1/servers/${id}/revoke`, {
     jwt: approve,
     body: {},
