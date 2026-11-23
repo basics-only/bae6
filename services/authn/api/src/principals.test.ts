@@ -104,6 +104,42 @@ test(
 );
 
 test(
+  "an identity linked to a non-user principal is refused, not provisioned",
+  { skip },
+  async () => {
+    const service = `prn_${"5".repeat(32)}`;
+    await db.query(
+      "INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'acme', 'service')",
+      [service],
+    );
+    await db.query(
+      `INSERT INTO external_identities
+         (id, tenant_id, principal_id, provider_connection_id, issuer, subject, external_tenant_id, external_object_id, last_verified_at)
+       VALUES ($1, 'acme', $2, 'entra', $3, 'svc-1', $4, 'oid-svc-1', now() - interval '1 day')`,
+      [`xid_${"5".repeat(32)}`, service, ENTRA_ISS, TID],
+    );
+    const snapshot = async () =>
+      (
+        await db.query(
+          `SELECT (SELECT count(*)::int FROM principals) AS principals,
+                  (SELECT count(*)::int FROM external_identities WHERE subject = 'svc-1') AS links,
+                  (SELECT last_verified_at FROM external_identities WHERE subject = 'svc-1') AS verified`,
+        )
+      ).rows[0];
+    const before = await snapshot();
+    await rejectsWith(
+      resolvePrincipal(
+        db,
+        await connection("acme", "entra"),
+        entraLogin("svc-1"),
+      ),
+      "principal_not_user",
+    );
+    assert.deepEqual(await snapshot(), before);
+  },
+);
+
+test(
   "without just-in-time provisioning an unknown identity is refused and nothing is created",
   { skip },
   async () => {
