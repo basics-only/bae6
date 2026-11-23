@@ -36,7 +36,7 @@ integration:
 	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8180 pnpm --filter @bae6/authz test:integration
 
 demo:
-	node --test deploy/integration/demo.test.mjs deploy/integration/workers.test.mjs deploy/integration/console.test.mjs
+	node --test e2e/integration/demo.test.mjs e2e/integration/workers.test.mjs e2e/integration/console.test.mjs
 
 up:
 	$(COMPOSE) up --build -d --wait
