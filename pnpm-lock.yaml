@@ -451,6 +451,9 @@ importers:
 
   services/authn/api:
     dependencies:
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.14
       openid-client:
         specifier: 'catalog:'
         version: 6.9.1
@@ -467,9 +470,6 @@ importers:
       '@types/pg':
         specifier: 'catalog:'
         version: 8.23.1
-      jose:
-        specifier: 'catalog:'
-        version: 6.2.14
       tsx:
         specifier: 'catalog:'
         version: 4.20.6
