@@ -137,7 +137,7 @@ paths:
   /auth/me:
     get:
       operationId: me
-      summary: The signed-in principal.
+      summary: The signed-in principal. A bearer token must be a bae6 token issued to `bae6-authn`.
       security:
         - session: []
         - bearer: []

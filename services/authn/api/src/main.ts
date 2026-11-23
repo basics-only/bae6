@@ -213,6 +213,7 @@ const bff = createBffRoutes({
   provider,
   tenantsByHost,
   sessionTtlSeconds,
+  issuer,
 });
 const tokens = createTokenRoutes({
   db: pool,

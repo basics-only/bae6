@@ -5,6 +5,7 @@ import {
   type GraphOptions,
   overageGroups,
 } from "./adapters.js";
+import { allActive, sessionLive } from "./exchange.js";
 import { HttpError, send } from "./http.js";
 import {
   OidcError,
@@ -25,10 +26,14 @@ import {
   revokeSession,
   SESSION_COOKIE,
 } from "./sessions.js";
+import { TokenError, verifyToken } from "./tokens.js";
 
 export const LOGIN_COOKIE_PREFIX = "__Host-bae6-login-";
 export const CSRF_COOKIE = "__Host-bae6-csrf";
+export const AUTHN_AUDIENCE = "bae6-authn";
 const LOGIN_TTL_SECONDS = 600;
+const MAX_PROVIDERS = 50;
+const BEARER = /^bearer ([A-Za-z0-9_.-]{1,8192})$/i;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const RETURN_TO = /^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]{0,1023}$/;
 const OPAQUE = /^[A-Za-z0-9_-]{1,128}$/;
@@ -47,6 +52,7 @@ export interface BffDeps {
   ): Promise<LoginProvider>;
   tenantsByHost: ReadonlyMap<string, string>;
   sessionTtlSeconds: number;
+  issuer: string;
   graph?: GraphOptions;
   allowHttp?: boolean;
 }
@@ -239,14 +245,50 @@ export function createBffRoutes(deps: BffDeps) {
     return s;
   }
 
+  async function bearerCaller(req: IncomingMessage, authorization: string) {
+    const { tenantId } = site(req);
+    const token = BEARER.exec(authorization)?.[1];
+    const unauthenticated = new HttpError(
+      401,
+      "unauthenticated",
+      "Invalid bearer token.",
+    );
+    if (!token) throw unauthenticated;
+    let claims: Awaited<ReturnType<typeof verifyToken>>;
+    try {
+      claims = await verifyToken(db, token, {
+        issuer: deps.issuer,
+        audience: AUTHN_AUDIENCE,
+      });
+    } catch (err) {
+      if (err instanceof TokenError) throw unauthenticated;
+      throw err;
+    }
+    const principals: { id: string; type?: string }[] = [
+      { id: claims.sub, type: claims.principal_type },
+    ];
+    if (claims.act) principals.push({ id: claims.act.sub });
+    if (
+      claims.tenant_id !== tenantId ||
+      !(await allActive(db, tenantId, principals)) ||
+      (claims.session_id !== undefined &&
+        !(await sessionLive(db, tenantId, claims.sub, claims.session_id)))
+    )
+      throw unauthenticated;
+    return { tenantId, principalId: claims.sub };
+  }
+
   async function me(req: IncomingMessage, res: ServerResponse) {
-    const s = await currentSession(req);
+    const authorization = req.headers.authorization;
+    const s = /^bearer /i.test(authorization ?? "")
+      ? await bearerCaller(req, authorization as string)
+      : await currentSession(req);
     const { rows } = await db.query(
       `SELECT id, tenant_id AS "tenantId", type, status,
               owner_application_id AS "ownerApplicationId",
               created_at AS "createdAt", updated_at AS "updatedAt",
               org_path AS "orgPath"
-         FROM principals WHERE tenant_id = $1 AND id = $2`,
+         FROM principals WHERE tenant_id = $1 AND id = $2 AND status = 'active'`,
       [s.tenantId, s.principalId],
     );
     const row = rows[0];
@@ -258,6 +300,37 @@ export function createBffRoutes(deps: BffDeps) {
         ...(ownerApplicationId ? { ownerApplicationId } : {}),
       },
       orgPath,
+    });
+  }
+
+  async function providers(req: IncomingMessage, res: ServerResponse) {
+    const { tenantId } = site(req);
+    const { rows } = await db.query<{
+      id: string;
+      kind: ConnectionPolicy["kind"];
+      issuer: string;
+      displayName: string;
+    }>(
+      `SELECT id, kind, issuer, COALESCE(display_name, id) AS "displayName"
+         FROM provider_connections WHERE tenant_id = $1 AND status = 'active'
+        ORDER BY "displayName", id LIMIT $2`,
+      [tenantId, MAX_PROVIDERS],
+    );
+    const usable = rows.filter((c) => {
+      try {
+        checkConnection(c, { allowHttp: deps.allowHttp ?? false });
+        return true;
+      } catch (err) {
+        if (err instanceof OidcError) return false;
+        throw err;
+      }
+    });
+    send(res, 200, {
+      providers: usable.map(({ id, kind, displayName }) => ({
+        id,
+        kind,
+        displayName,
+      })),
     });
   }
 
@@ -292,6 +365,8 @@ export function createBffRoutes(deps: BffDeps) {
         await callback(req, res, url, flow[2] as string);
       else if (req.method === "GET" && url.pathname === "/auth/me")
         await me(req, res);
+      else if (req.method === "GET" && url.pathname === "/auth/providers")
+        await providers(req, res);
       else if (req.method === "POST" && url.pathname === "/auth/logout")
         await logout(req, res);
       else return false;
