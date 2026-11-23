@@ -162,12 +162,15 @@ paths:
       operationId: exchangeToken
       summary: RFC 8693 token exchange for a bae6 token with one audience.
       description: |
-        `subject_token` is a verified provider access token, or a bae6 token being
-        re-exchanged for another audience. Re-exchange keeps the actor and delegation and
-        can only narrow them. With `delegation_id`, `actor_token` is the agent's own
-        credential and the delegation must name that actor.
+        `subject_token` is a bae6 session cookie value (`urn:bae6:params:oauth:token-type:session`),
+        a verified provider access token, or a bae6 token being re-exchanged for another
+        audience. Re-exchange needs the bearer secret of the service the subject token was
+        issued to, keeps the actor and delegation, and can only narrow them. With
+        `delegation_id`, `actor_token` is the agent's own credential and the delegation must
+        name that actor.
       security:
         - bearer: []
+        - {}
       requestBody:
         required: true
         content:
@@ -190,6 +193,7 @@ paths:
                   enum:
                     - urn:ietf:params:oauth:token-type:access_token
                     - urn:ietf:params:oauth:token-type:jwt
+                    - urn:bae6:params:oauth:token-type:session
                 actor_token:
                   type: string
                   maxLength: 8192

@@ -123,6 +123,35 @@ export async function promoteNextKey(
   }
 }
 
+export async function syncKeys(
+  db: Pool,
+  signers: ReadonlyMap<string, Signer>,
+): Promise<Record<string, string>> {
+  for (const signer of signers.values())
+    await registerKey(db, signer).catch((err) => {
+      if (!(err instanceof KeyError)) throw err;
+    });
+  const kids = [...signers.keys()];
+  // A fresh install has no tokens or cached key sets to overlap with.
+  await db.query(
+    `UPDATE signing_keys SET status = 'active'
+      WHERE status = 'next' AND kid = ANY($1)
+        AND NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')`,
+    [kids],
+  );
+  await promoteNextKey(db, signers).catch((err) => {
+    if (!(err instanceof KeyError)) throw err;
+  });
+  const { rows } = await db.query<{ kid: string; status: string }>(
+    "SELECT kid, status FROM signing_keys WHERE kid = ANY($1)",
+    [kids],
+  );
+  const status = new Map(rows.map((r) => [r.kid, r.status]));
+  return Object.fromEntries(
+    kids.map((kid) => [kid, status.get(kid) ?? "unpublished"]),
+  );
+}
+
 export async function publishedKeys(db: Pool): Promise<PublicJwk[]> {
   const { rows } = await db.query<{ public_jwk: PublicJwk }>(
     `SELECT public_jwk FROM signing_keys

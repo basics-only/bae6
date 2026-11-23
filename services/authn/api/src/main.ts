@@ -1,13 +1,20 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import pg from "pg";
 import { createBffRoutes } from "./bff.js";
 import { migrate } from "./db/migrate.js";
+import {
+  localSigner,
+  MAX_PUBLISHED_KEYS,
+  type Signer,
+  syncKeys,
+} from "./keys.js";
 import { OidcError, OidcProvider } from "./oidc.js";
 import type { ConnectionPolicy } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { MAX_SESSION_TTL_SECONDS } from "./sessions.js";
+import { createTokenRoutes } from "./token-routes.js";
 
 const env = process.env;
 const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));
@@ -54,6 +61,61 @@ const tenantsByHost = new Map(
       return [host, tenant] as const;
     }),
 );
+const issuer = required("BAE6_AUTHN_ISSUER");
+if (!/^https?:\/\/[^\s/?#]+(\/[^\s/?#]+)*$/.test(issuer))
+  throw new Error(
+    "BAE6_AUTHN_ISSUER must be an http(s) URL without a trailing slash",
+  );
+const audiences = new Set(
+  required("BAE6_AUTHN_AUDIENCES")
+    .split(",")
+    .map((a) => a.trim()),
+);
+if (audiences.size > 64 || ![...audiences].every((a) => SLUG.test(a)))
+  throw new Error("BAE6_AUTHN_AUDIENCES must be up to 64 service slugs");
+
+const SECRET_REF = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/;
+const MAX_SECRET_BYTES = 8192;
+const MIN_CLIENT_SECRET_LENGTH = 32;
+
+// Provider secrets and authn's own keys live apart, so no provider connection can name a signing key.
+const keysDir = required("BAE6_AUTHN_KEYS_DIR");
+if (resolve(keysDir) === resolve(secretsDir))
+  throw new Error(
+    "BAE6_AUTHN_KEYS_DIR must differ from BAE6_AUTHN_SECRETS_DIR",
+  );
+
+async function readSecret(ref: string, dir = secretsDir): Promise<string> {
+  if (!SECRET_REF.test(ref)) throw new Error("invalid secret name");
+  const path = join(dir, ref);
+  if ((await stat(path)).size > MAX_SECRET_BYTES)
+    throw new Error("secret file too large");
+  return (await readFile(path, "utf8")).trim();
+}
+
+const keyRefs = required("BAE6_AUTHN_SIGNING_KEYS").split(",");
+if (keyRefs.length > MAX_PUBLISHED_KEYS)
+  throw new Error(
+    `BAE6_AUTHN_SIGNING_KEYS takes at most ${MAX_PUBLISHED_KEYS} keys`,
+  );
+const signers = new Map<string, Signer>();
+for (const ref of keyRefs) {
+  const signer = localSigner(await readSecret(ref.trim(), keysDir));
+  signers.set(signer.kid, signer);
+}
+
+async function clientSecret(audience: string): Promise<string | undefined> {
+  let secret: string;
+  try {
+    secret = await readSecret(`token-client-${audience}`, keysDir);
+  } catch (err) {
+    if ((err as { code?: string }).code === "ENOENT") return undefined;
+    throw err;
+  }
+  if (secret.length < MIN_CLIENT_SECRET_LENGTH)
+    throw new Error(`token client secret for ${audience} is too short`);
+  return secret;
+}
 
 // Waiting on another replica's migration lock or building an index can exceed the request timeout.
 const migrator = new pg.Client({
@@ -76,21 +138,8 @@ const pool = new pg.Pool({
 });
 pool.on("error", (err) => log({ msg: "pool_error", error: err.name }));
 
-const SECRET_REF = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/;
-const MAX_SECRET_BYTES = 8192;
 const MAX_CACHED_PROVIDERS = 256;
 const providers = new Map<string, OidcProvider>();
-
-async function readSecret(ref: string): Promise<string> {
-  const path = join(secretsDir, ref);
-  try {
-    if ((await stat(path)).size > MAX_SECRET_BYTES)
-      throw new Error("client secret file too large");
-    return (await readFile(path, "utf8")).trim();
-  } catch (err) {
-    throw new OidcError("provider_misconfigured", { cause: err });
-  }
-}
 
 async function provider(
   connection: ConnectionPolicy,
@@ -102,9 +151,10 @@ async function provider(
     [connection.tenantId, connection.id],
   );
   const row = rows[0];
-  if (!row || !SECRET_REF.test(row.secretRef))
-    throw new OidcError("provider_misconfigured");
-  const clientSecret = await readSecret(row.secretRef);
+  if (!row) throw new OidcError("provider_misconfigured");
+  const clientSecret = await readSecret(row.secretRef).catch((err) => {
+    throw new OidcError("provider_misconfigured", { cause: err });
+  });
   const key = JSON.stringify([
     connection.tenantId,
     connection.id,
@@ -127,16 +177,40 @@ async function provider(
   return discovered;
 }
 
+let keyState = "";
+async function rotateKeys() {
+  try {
+    const keys = await syncKeys(pool, signers);
+    const state = JSON.stringify(keys);
+    if (state !== keyState) log({ msg: "signing_keys", keys });
+    keyState = state;
+  } catch (err) {
+    log({ msg: "signing_keys_error", error: (err as Error).name });
+  }
+}
+await rotateKeys();
+const rotation = setInterval(rotateKeys, 60_000);
+rotation.unref();
+
+const bff = createBffRoutes({
+  db: pool,
+  provider,
+  tenantsByHost,
+  sessionTtlSeconds,
+});
+const tokens = createTokenRoutes({
+  db: pool,
+  signers,
+  issuer,
+  audiences,
+  clientSecret,
+});
 const server = createAuthnApi({
   ping: async () => void (await pool.query("SELECT 1")),
   requestTimeoutMs,
   log,
-  routes: createBffRoutes({
-    db: pool,
-    provider,
-    tenantsByHost,
-    sessionTtlSeconds,
-  }),
+  routes: async (req, res, url) =>
+    (await tokens(req, res, url)) || bff(req, res, url),
 });
 server.listen(port, "0.0.0.0", () => log({ msg: "listening", port }));
 
@@ -144,6 +218,7 @@ let stopping = false;
 const stop = () => {
   if (stopping) return;
   stopping = true;
+  clearInterval(rotation);
   server.drain();
   setTimeout(() => {
     server.close(async () => {
