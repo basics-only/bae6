@@ -29,7 +29,7 @@ const JWT_TYPE = "urn:ietf:params:oauth:token-type:jwt";
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 export const SESSION_TOKEN_TYPE = "urn:bae6:params:oauth:token-type:session";
 const TOKEN_TYPES = new Set([JWT_TYPE, ACCESS_TOKEN_TYPE]);
-const SUBJECT_TYPES = new Set([...TOKEN_TYPES, SESSION_TOKEN_TYPE]);
+const SUBJECT_TYPES = new Set([JWT_TYPE, SESSION_TOKEN_TYPE]);
 const MAX_TOKEN_LENGTH = 8192;
 const PARAMS = new Set([
   "grant_type",
@@ -149,9 +149,11 @@ async function sessionLive(
   sessionId: string,
 ): Promise<boolean> {
   const { rowCount } = await db.query(
-    `SELECT 1 FROM sessions
-      WHERE tenant_id = $1 AND id = $2 AND principal_id = $3
-        AND revoked_at IS NULL AND expires_at > now()`,
+    `SELECT 1 FROM sessions s
+       JOIN provider_connections c
+         ON c.tenant_id = s.tenant_id AND c.id = s.provider_connection_id
+      WHERE s.tenant_id = $1 AND s.id = $2 AND s.principal_id = $3
+        AND s.revoked_at IS NULL AND s.expires_at > now() AND c.status = 'active'`,
     [tenantId, sessionId, principalId],
   );
   return rowCount === 1;

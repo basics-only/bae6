@@ -5,6 +5,7 @@ import pg from "pg";
 import { createBffRoutes } from "./bff.js";
 import { migrate } from "./db/migrate.js";
 import {
+  activeSigner,
   localSigner,
   MAX_PUBLISHED_KEYS,
   type Signer,
@@ -78,7 +79,6 @@ const SECRET_REF = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/;
 const MAX_SECRET_BYTES = 8192;
 const MIN_CLIENT_SECRET_LENGTH = 32;
 
-// Provider secrets and authn's own keys live apart, so no provider connection can name a signing key.
 const keysDir = required("BAE6_AUTHN_KEYS_DIR");
 if (resolve(keysDir) === resolve(secretsDir))
   throw new Error(
@@ -98,22 +98,38 @@ if (keyRefs.length > MAX_PUBLISHED_KEYS)
   throw new Error(
     `BAE6_AUTHN_SIGNING_KEYS takes at most ${MAX_PUBLISHED_KEYS} keys`,
   );
+const activeRef =
+  env.BAE6_AUTHN_ACTIVE_SIGNING_KEY ||
+  (keyRefs.length === 1 ? keyRefs[0]?.trim() : undefined);
+if (!activeRef || !keyRefs.map((r) => r.trim()).includes(activeRef))
+  throw new Error(
+    "BAE6_AUTHN_ACTIVE_SIGNING_KEY must name one of BAE6_AUTHN_SIGNING_KEYS",
+  );
 const signers = new Map<string, Signer>();
-for (const ref of keyRefs) {
-  const signer = localSigner(await readSecret(ref.trim(), keysDir));
+let activeKid = "";
+for (const ref of keyRefs.map((r) => r.trim())) {
+  const signer = localSigner(await readSecret(ref, keysDir));
   signers.set(signer.kid, signer);
+  if (ref === activeRef) activeKid = signer.kid;
 }
 
-async function clientSecret(audience: string): Promise<string | undefined> {
+const sessionClients = (env.BAE6_AUTHN_SESSION_CLIENTS ?? "")
+  .split(",")
+  .map((c) => c.trim())
+  .filter(Boolean);
+if (sessionClients.length > 16 || !sessionClients.every((c) => SLUG.test(c)))
+  throw new Error("BAE6_AUTHN_SESSION_CLIENTS must be up to 16 client slugs");
+
+async function clientSecret(client: string): Promise<string | undefined> {
   let secret: string;
   try {
-    secret = await readSecret(`token-client-${audience}`, keysDir);
+    secret = await readSecret(`token-client-${client}`, keysDir);
   } catch (err) {
     if ((err as { code?: string }).code === "ENOENT") return undefined;
     throw err;
   }
   if (secret.length < MIN_CLIENT_SECRET_LENGTH)
-    throw new Error(`token client secret for ${audience} is too short`);
+    throw new Error(`token client secret for ${client} is too short`);
   return secret;
 }
 
@@ -180,7 +196,7 @@ async function provider(
 let keyState = "";
 async function rotateKeys() {
   try {
-    const keys = await syncKeys(pool, signers);
+    const keys = await syncKeys(pool, signers, activeKid);
     const state = JSON.stringify(keys);
     if (state !== keyState) log({ msg: "signing_keys", keys });
     keyState = state;
@@ -203,10 +219,11 @@ const tokens = createTokenRoutes({
   signers,
   issuer,
   audiences,
+  sessionClients,
   clientSecret,
 });
 const server = createAuthnApi({
-  ping: async () => void (await pool.query("SELECT 1")),
+  ping: async () => void (await activeSigner(pool, signers)),
   requestTimeoutMs,
   log,
   routes: async (req, res, url) =>

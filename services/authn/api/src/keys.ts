@@ -126,20 +126,22 @@ export async function promoteNextKey(
 export async function syncKeys(
   db: Pool,
   signers: ReadonlyMap<string, Signer>,
+  activeKid: string,
 ): Promise<Record<string, string>> {
+  const wanted = signers.get(activeKid);
+  if (!wanted) throw new KeyError(`no signer configured for ${activeKid}`);
   for (const signer of signers.values())
     await registerKey(db, signer).catch((err) => {
       if (!(err instanceof KeyError)) throw err;
     });
   const kids = [...signers.keys()];
-  // A fresh install has no tokens or cached key sets to overlap with.
   await db.query(
     `UPDATE signing_keys SET status = 'active'
-      WHERE status = 'next' AND kid = ANY($1)
+      WHERE status = 'next' AND kid = $1
         AND NOT EXISTS (SELECT 1 FROM signing_keys WHERE status <> 'next')`,
-    [kids],
+    [activeKid],
   );
-  await promoteNextKey(db, signers).catch((err) => {
+  await promoteNextKey(db, new Map([[activeKid, wanted]])).catch((err) => {
     if (!(err instanceof KeyError)) throw err;
   });
   const { rows } = await db.query<{ kid: string; status: string }>(

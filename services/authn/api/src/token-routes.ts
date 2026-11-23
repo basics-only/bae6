@@ -16,7 +16,8 @@ const MAX_FORM_BYTES = 20_480;
 const BEARER = /^Bearer ([\x21-\x7e]{1,512})$/;
 
 export interface TokenRouteDeps extends ExchangeDeps {
-  clientSecret(audience: string): Promise<string | undefined>;
+  sessionClients: readonly string[];
+  clientSecret(client: string): Promise<string | undefined>;
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest();
@@ -36,6 +37,17 @@ async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
 }
 
 export function createTokenRoutes(deps: TokenRouteDeps) {
+  async function authenticate(req: IncomingMessage, clients: string[]) {
+    const supplied = BEARER.exec(req.headers.authorization ?? "")?.[1];
+    if (!supplied) throw new OAuthError("invalid_client");
+    for (const client of clients) {
+      const expected = await deps.clientSecret(client);
+      if (expected && timingSafeEqual(sha256(supplied), sha256(expected)))
+        return;
+    }
+    throw new OAuthError("invalid_client");
+  }
+
   async function callerAudience(req: IncomingMessage, subjectToken: string) {
     let aud: unknown;
     try {
@@ -45,16 +57,14 @@ export function createTokenRoutes(deps: TokenRouteDeps) {
     }
     if (typeof aud !== "string" || !deps.audiences.has(aud))
       throw new OAuthError("invalid_request");
-    const supplied = BEARER.exec(req.headers.authorization ?? "")?.[1];
-    if (!supplied) throw new OAuthError("invalid_client");
-    const expected = await deps.clientSecret(aud);
-    if (!expected || !timingSafeEqual(sha256(supplied), sha256(expected)))
-      throw new OAuthError("invalid_client");
+    await authenticate(req, [aud]);
     return aud;
   }
 
   async function token(req: IncomingMessage, res: ServerResponse) {
     const request = parseExchangeRequest(await readForm(req));
+    if (request.subjectTokenType === SESSION_TOKEN_TYPE)
+      await authenticate(req, [...deps.sessionClients]);
     const out =
       request.subjectTokenType === SESSION_TOKEN_TYPE
         ? await exchangeSession(

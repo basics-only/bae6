@@ -16,6 +16,7 @@ const skip = url ? false : "BAE6_DATABASE_URL not set";
 const ISSUER = "https://authn.bae6.test";
 const ALICE = `prn_${"a".repeat(32)}`;
 const GATEWAY_SECRET = "g".repeat(40);
+const CONSOLE_SECRET = "c".repeat(40);
 const EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
 const JWT = "urn:ietf:params:oauth:token-type:jwt";
 let db: pg.Pool;
@@ -56,8 +57,9 @@ before(async () => {
       signers,
       issuer: ISSUER,
       audiences: new Set(["gateway", "data-api"]),
-      clientSecret: async (aud) =>
-        aud === "gateway" ? GATEWAY_SECRET : undefined,
+      sessionClients: ["console"],
+      clientSecret: async (client) =>
+        ({ gateway: GATEWAY_SECRET, console: CONSOLE_SECRET })[client],
     }),
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -94,14 +96,18 @@ const post = (
     body: new URLSearchParams({ grant_type: EXCHANGE, ...fields }),
   });
 
-const fromSession = (cookie: string, audience = "gateway") =>
+const fromSession = (
+  cookie: string,
+  audience = "gateway",
+  secret = CONSOLE_SECRET,
+) =>
   post(
     {
       subject_token: cookie,
       subject_token_type: SESSION_TOKEN_TYPE,
       audience,
     },
-    { "x-request-id": "req-42" },
+    { "x-request-id": "req-42", authorization: `Bearer ${secret}` },
   );
 
 const oauthError = async (res: Response, status: number, error: string) => {
@@ -113,7 +119,9 @@ test(
   "a fresh install activates its first key and publishes it with a bounded cache lifetime",
   { skip },
   async () => {
-    assert.deepEqual(await syncKeys(db, signers), { [keyA.kid]: "active" });
+    assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
+      [keyA.kid]: "active",
+    });
     const res = await fetch(`${base}/.well-known/jwks.json`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("cache-control"), "public, max-age=300");
@@ -154,16 +162,25 @@ test(
     const cookie = await session();
     await oauthError(await fromSession(cookie, "evil"), 400, "invalid_target");
     await oauthError(
-      await post({
-        subject_token: cookie,
-        subject_token_type: SESSION_TOKEN_TYPE,
-        audience: "gateway",
-        actor_token: "x",
-        actor_token_type: JWT,
-      }),
+      await post(
+        {
+          subject_token: cookie,
+          subject_token_type: SESSION_TOKEN_TYPE,
+          audience: "gateway",
+          actor_token: "x",
+          actor_token_type: JWT,
+        },
+        { authorization: `Bearer ${CONSOLE_SECRET}` },
+      ),
       400,
       "invalid_request",
     );
+    for (const secret of [GATEWAY_SECRET, "x".repeat(40)])
+      await oauthError(
+        await fromSession(cookie, "gateway", secret),
+        401,
+        "invalid_client",
+      );
     await oauthError(
       await fromSession(`${cookie.split(".")[0]}.${"A".repeat(43)}`),
       400,
@@ -234,15 +251,32 @@ test(
       audience: "data-api",
     });
     assert.equal(claims.sub, ALICE);
+
+    await db.query(
+      "UPDATE provider_connections SET status = 'disabled' WHERE id = 'ping'",
+    );
+    try {
+      await oauthError(
+        await reExchange(forGateway, {
+          authorization: `Bearer ${GATEWAY_SECRET}`,
+        }),
+        400,
+        "invalid_request",
+      );
+    } finally {
+      await db.query(
+        "UPDATE provider_connections SET status = 'active' WHERE id = 'ping'",
+      );
+    }
   },
 );
 
 test(
-  "rotation publishes a new key as next and promotes it only after the overlap",
+  "a new key is published as next and signs only once named active after the overlap",
   { skip },
   async () => {
     signers.set(keyB.kid, keyB);
-    assert.deepEqual(await syncKeys(db, signers), {
+    assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
       [keyA.kid]: "active",
       [keyB.kid]: "next",
     });
@@ -250,7 +284,11 @@ test(
       "UPDATE signing_keys SET created_at = now() - interval '1 hour' WHERE kid = $1",
       [keyB.kid],
     );
-    assert.deepEqual(await syncKeys(db, signers), {
+    assert.deepEqual(await syncKeys(db, signers, keyA.kid), {
+      [keyA.kid]: "active",
+      [keyB.kid]: "next",
+    });
+    assert.deepEqual(await syncKeys(db, signers, keyB.kid), {
       [keyA.kid]: "retired",
       [keyB.kid]: "active",
     });
