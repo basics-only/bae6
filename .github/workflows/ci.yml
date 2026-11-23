@@ -27,14 +27,12 @@ jobs:
     timeout-minutes: 40
     env:
       CONTAINER_RUNTIME: docker
-      BAE6_DATABASE_URL: postgres://authz:dev-only-authz@127.0.0.1:5432/authz
-      BAE6_EMBED_DATABASE_URL: postgres://embed:dev-only-embed@127.0.0.1:5432/embed
-      OPENFGA_API_URL: http://127.0.0.1:8180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: make up
       - run: make test
+      - run: make db-test
       - run: make integration
       - run: make demo
       - if: failure()
