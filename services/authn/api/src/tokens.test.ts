@@ -393,6 +393,32 @@ test(
 );
 
 test(
+  "re-exchange refuses delegated tokens until delegation revocation can be checked",
+  { skip },
+  async () => {
+    const claims = { act: { sub: AGENT }, task_id: "task-1" };
+    const undelegated = await mint(claims);
+    await exchangeToken(
+      deps(),
+      { audience: "gateway" },
+      form({ subject_token: undelegated.token }),
+    );
+    const { token } = await mint({
+      ...claims,
+      delegation_id: `dlg_${"0".repeat(32)}`,
+    });
+    await oauthError(
+      exchangeToken(
+        deps(),
+        { audience: "gateway" },
+        form({ subject_token: token }),
+      ),
+      "invalid_request",
+    );
+  },
+);
+
+test(
   "re-exchange stops as soon as the principal, its actor or its session is no longer valid",
   { skip },
   async () => {
