@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
-import pg from "pg";
-import { migrate } from "./db/migrate.js";
+import type pg from "pg";
+import { migratedTestDatabase } from "./db/test-database.js";
 import {
   type ConnectionPolicy,
   linkExternalIdentity,
@@ -14,9 +13,8 @@ import {
 
 const url = process.env.BAE6_DATABASE_URL;
 const skip = url ? false : "BAE6_DATABASE_URL not set";
-const name = `authn_prn_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-let admin: pg.Client;
 let db: pg.Pool;
+let close: () => Promise<void>;
 
 const TID = "11111111-1111-4111-8111-111111111111";
 const GLOBEX_TID = "22222222-2222-4222-8222-222222222222";
@@ -28,18 +26,10 @@ const GLOBEX_GROUP = `prn_${"9".repeat(32)}`;
 
 before(async () => {
   if (skip) return;
-  admin = new pg.Client({ connectionString: url });
-  await admin.connect();
-  await admin.query(`CREATE DATABASE ${name}`);
-  const target = new URL(url as string);
-  target.pathname = `/${name}`;
-  db = new pg.Pool({ connectionString: target.toString(), max: 8 });
-  const client = await db.connect();
-  try {
-    await migrate(client);
-  } finally {
-    client.release();
-  }
+  ({ pool: db, close } = await migratedTestDatabase(
+    url as string,
+    "authn_prn",
+  ));
   await db.query(
     `INSERT INTO provider_connections
        (tenant_id, id, kind, issuer, client_id, client_secret_ref, jit_provisioning, group_claim, status)
@@ -63,10 +53,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (skip) return;
-  await db?.end();
-  await admin?.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
-  await admin?.end();
+  if (!skip) await close?.();
 });
 
 const connection = async (tenant: string, id: string) =>
