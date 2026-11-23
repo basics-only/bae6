@@ -13,3 +13,5 @@ runs:
         enable-cache: true
     - shell: bash
       run: make install
+    - shell: bash
+      run: pnpm build
