@@ -131,6 +131,15 @@ export class OidcProvider {
     return { url, pending };
   }
 
+  async clientCredentials(scope: string): Promise<string> {
+    try {
+      return (await oidc.clientCredentialsGrant(this.config, { scope }))
+        .access_token;
+    } catch (err) {
+      throw new OidcError(classify(err), { cause: err });
+    }
+  }
+
   // The callback URL is rebuilt from the configured redirect URI, never the request's Host.
   async completeLogin(
     query: URLSearchParams,

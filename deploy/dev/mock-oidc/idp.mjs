@@ -15,6 +15,7 @@ import {
 } from "jose";
 
 export const GRAPH_AUDIENCE = "https://graph.microsoft.com";
+const GRAPH_GROUP_ROLE = "GroupMember.Read.All";
 const MAX_CODES = 100;
 const CODE_TTL_MS = 60_000;
 const TOKEN_TTL_S = 300;
@@ -413,7 +414,13 @@ export async function createIdp({ baseUrl, publicUrl = baseUrl, config }) {
         const m = /^(\S+)\/\.default$/.exec(scope);
         if (!m) return json(res, 400, { error: "invalid_scope" });
         aud = m[1];
-        claims = { tid: realm.id, azp: client.id, ver: "2.0" };
+        claims = {
+          tid: realm.id,
+          azp: client.id,
+          ver: "2.0",
+          idtyp: "app",
+          roles: [GRAPH_GROUP_ROLE],
+        };
       } else if (realm.kind === "okta") {
         claims = { ver: 1, cid: client.id, scp: scope ? scope.split(" ") : [] };
       } else {
@@ -435,16 +442,23 @@ export async function createIdp({ baseUrl, publicUrl = baseUrl, config }) {
       return json(res, 401, { error: { code: "InvalidAuthenticationToken" } });
     for (const realm of realms) {
       if (realm.kind !== "entra") continue;
-      let verified = false;
+      let payload;
       try {
-        await jwtVerify(header.slice(7), realm.keySet, {
+        ({ payload } = await jwtVerify(header.slice(7), realm.keySet, {
           issuer: realm.iss,
           audience: GRAPH_AUDIENCE,
           algorithms: ["RS256"],
-        });
-        verified = true;
+        }));
       } catch {}
-      if (!verified) continue;
+      if (!payload) continue;
+      if (
+        payload.idtyp !== "app" ||
+        !Array.isArray(payload.roles) ||
+        !payload.roles.includes(GRAPH_GROUP_ROLE)
+      )
+        return json(res, 403, {
+          error: { code: "Authorization_RequestDenied" },
+        });
       const user = realm.users.find((u) => u.claims.oid === oid);
       if (!user)
         return json(res, 404, { error: { code: "Request_ResourceNotFound" } });
