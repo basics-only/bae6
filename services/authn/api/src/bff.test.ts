@@ -286,8 +286,66 @@ test(
       "Bearer not-a-token",
     ])
       assert.equal((await me(bad)).status, 401, bad.slice(0, 20));
-    const unmapped = `http://localhost:${new URL(base).port}`;
-    assert.equal((await me(`Bearer ${await token()}`, unmapped)).status, 404);
+    const onHost = (
+      hostHeader: string,
+      authorization: string,
+      cookie?: string,
+    ) =>
+      new Promise<{ status: number | undefined; tenantId?: string }>(
+        (resolve, reject) =>
+          request(
+            `${base}/auth/me`,
+            {
+              headers: {
+                host: hostHeader,
+                authorization,
+                ...(cookie ? { cookie } : {}),
+              },
+            },
+            async (res) => {
+              let body = "";
+              for await (const chunk of res) body += chunk;
+              resolve({
+                status: res.statusCode,
+                tenantId:
+                  res.statusCode === 200
+                    ? JSON.parse(body).principal.tenantId
+                    : undefined,
+              });
+            },
+          )
+            .on("error", reject)
+            .end(),
+      );
+    const internal = new URL(AUTHN_ISSUER).host;
+    const globex = `Bearer ${
+      (
+        await mintToken(db, signers, AUTHN_ISSUER, {
+          aud: AUTHN_AUDIENCE,
+          sub: outsider,
+          txn: "req-2",
+          tenant_id: "globex",
+          org_path: ["globex"],
+          principal_type: "user",
+        })
+      ).token
+    }`;
+    assert.deepEqual(await onHost(internal, `Bearer ${await token()}`), {
+      status: 200,
+      tenantId: "acme",
+    });
+    assert.deepEqual(await onHost(internal, globex), {
+      status: 200,
+      tenantId: "globex",
+    });
+    assert.equal((await onHost("acme.bae6.test", globex)).status, 401);
+    for (const unmapped of ["localhost", `${internal}.`, `${internal}:8443`])
+      assert.equal(
+        (await onHost(unmapped, `Bearer ${await token()}`)).status,
+        404,
+        unmapped,
+      );
+    assert.equal((await onHost(internal, "Basic abc", cookie)).status, 404);
   },
 );
 
