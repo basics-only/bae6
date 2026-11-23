@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: make lint
+      - run: make typecheck
+
+  stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CONTAINER_RUNTIME: docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: make up
+      - run: make test
+      - run: make db-test
+      - run: make integration
+      - run: make demo
+      - if: failure()
+        run: docker compose -f deploy/compose.yaml --profile all logs --no-color --tail 100
+      - if: always()
+        run: make down

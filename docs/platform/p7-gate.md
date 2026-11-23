@@ -1,6 +1,6 @@
 # P7 gate
 
-Stack: `deploy/compose.yaml` (`make up PROFILE=context`). Demo: `node --test deploy/integration/demo.test.mjs` (5 pass). Load: `node deploy/integration/load.mjs`. All cloud providers are mocks; live smoke tests are pending.
+Stack: `deploy/compose.yaml` (`make up PROFILE=context`). Demo: `node --test e2e/integration/demo.test.mjs` (5 pass). Load: `node e2e/load/load.mjs`. All cloud providers are mocks; live smoke tests are pending.
 
 ## Version matrix
 

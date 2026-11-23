@@ -1,0 +1,17 @@
+name: setup
+description: Node, pnpm and uv with the workspace installed from the lockfiles
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 22
+        cache: pnpm
+    - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      with:
+        enable-cache: true
+    - shell: bash
+      run: make install
+    - shell: bash
+      run: pnpm build
