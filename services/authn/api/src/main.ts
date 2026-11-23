@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import pg from "pg";
 import { createBffRoutes } from "./bff.js";
 import { migrate } from "./db/migrate.js";
+import { parseTokenTargets } from "./exchange.js";
 import {
   activeSigner,
   localSigner,
@@ -74,6 +75,11 @@ const audiences = new Set(
 );
 if (audiences.size > 64 || ![...audiences].every((a) => SLUG.test(a)))
   throw new Error("BAE6_AUTHN_AUDIENCES must be up to 64 service slugs");
+
+const reexchangeTargets = parseTokenTargets(
+  env.BAE6_AUTHN_TOKEN_TARGETS ?? "",
+  audiences,
+);
 
 const SECRET_REF = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$/;
 const MAX_SECRET_BYTES = 8192;
@@ -220,6 +226,7 @@ const tokens = createTokenRoutes({
   signers,
   issuer,
   audiences,
+  reexchangeTargets,
   sessionClients,
   clientSecret,
 });

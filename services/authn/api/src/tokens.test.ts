@@ -4,7 +4,12 @@ import { after, before, test } from "node:test";
 import { calculateJwkThumbprint, SignJWT } from "jose";
 import type pg from "pg";
 import { migratedTestDatabase } from "./db/test-database.js";
-import { exchangeToken, OAuthError, parseExchangeRequest } from "./exchange.js";
+import {
+  exchangeToken,
+  OAuthError,
+  parseExchangeRequest,
+  parseTokenTargets,
+} from "./exchange.js";
 import {
   KeyError,
   localSigner,
@@ -261,6 +266,7 @@ const deps = () => ({
   signers,
   issuer: ISSUER,
   audiences: new Set(["gateway", "data-api"]),
+  reexchangeTargets: new Map([["gateway", new Set(["data-api"])]]),
 });
 
 const form = (fields: Record<string, string>) =>
@@ -321,6 +327,36 @@ test("exchange requests outside RFC 8693 or the contract are refused", () => {
   assert.equal(form({ subject_token: "t" }).audience, "data-api");
 });
 
+test("re-exchange targets accept only other known audiences, each caller once", () => {
+  const audiences = new Set(["gateway", "data-api", "embed-api"]);
+  assert.deepEqual(
+    parseTokenTargets(
+      " gateway = data-api | embed-api , data-api=embed-api",
+      audiences,
+    ),
+    new Map([
+      ["gateway", new Set(["data-api", "embed-api"])],
+      ["data-api", new Set(["embed-api"])],
+    ]),
+  );
+  assert.deepEqual(parseTokenTargets("", audiences), new Map());
+  for (const bad of [
+    "gateway",
+    "gateway=",
+    "gateway=data-api|",
+    "gateway=gateway",
+    "gateway=evil",
+    "evil=data-api",
+    "gateway=data-api=embed-api",
+    "gateway=data-api,gateway=embed-api",
+  ])
+    assert.throws(
+      () => parseTokenTargets(bad, audiences),
+      /TOKEN_TARGETS/,
+      bad,
+    );
+});
+
 test(
   "re-exchange moves a token to a new audience without widening it",
   { skip },
@@ -378,6 +414,22 @@ test(
         deps(),
         { audience: "gateway" },
         form({ subject_token: token, audience: "evil" }),
+      ),
+      "invalid_target",
+    );
+    await oauthError(
+      exchangeToken(
+        deps(),
+        { audience: "gateway" },
+        form({ subject_token: token, audience: "gateway" }),
+      ),
+      "invalid_target",
+    );
+    await oauthError(
+      exchangeToken(
+        { ...deps(), reexchangeTargets: new Map() },
+        { audience: "gateway" },
+        form({ subject_token: token }),
       ),
       "invalid_target",
     );
