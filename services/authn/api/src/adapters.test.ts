@@ -5,8 +5,10 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { createIdp, type MockIdpConfig } from "@bae6/mock-oidc/idp.mjs";
+import { decodeJwt } from "jose";
 import {
   checkConnection,
+  entraOnBehalfOf,
   graphMemberGroups,
   overageGroups,
 } from "./adapters.js";
@@ -67,6 +69,7 @@ async function signIn(
   kind: "entra" | "okta" | "ping",
   issuer: string,
   login?: string,
+  scopes?: string[],
 ) {
   const provider = await OidcProvider.discover(
     {
@@ -74,6 +77,7 @@ async function signIn(
       clientId: client.id,
       clientSecret: client.secret,
       redirectUri: `http://localhost:8092/auth/callback/${kind}`,
+      ...(scopes ? { scopes } : {}),
     },
     { allowHttp: true },
   );
@@ -258,4 +262,94 @@ test("Graph failures never yield a group list", async () => {
     graphMemberGroups("t", BOB_OID, { baseUrl: stubBase }),
     "provider_misconfigured",
   );
+});
+
+const SHAREPOINT = "https://acme.sharepoint.com";
+const appScopes = () => [
+  "openid",
+  "profile",
+  "email",
+  `api://${client.id}/access_as_user`,
+];
+
+test("on-behalf-of trades the user's token for one scoped to an allowed downstream resource", async () => {
+  const alice = await signIn(
+    "entra",
+    `${base}/entra/${ACME}/v2.0`,
+    "alice@acme.example",
+    appScopes(),
+  );
+  const { accessToken, expiresAt } = await entraOnBehalfOf(
+    entra,
+    alice.provider,
+    alice.login.providerAccessToken,
+    SHAREPOINT,
+    [SHAREPOINT],
+  );
+  const claims = decodeJwt(accessToken);
+  assert.equal(claims.aud, SHAREPOINT);
+  assert.equal(claims.oid, alice.login.identity.claims.oid);
+  assert.ok(expiresAt);
+});
+
+test("on-behalf-of refuses resources off the allowlist, malformed assertions and non-Entra connections", async () => {
+  const alice = await signIn(
+    "entra",
+    `${base}/entra/${ACME}/v2.0`,
+    "alice@acme.example",
+    appScopes(),
+  );
+  const token = alice.login.providerAccessToken;
+  const call = (resource: string, assertion = token) =>
+    entraOnBehalfOf(entra, alice.provider, assertion, resource, [SHAREPOINT]);
+  await rejectsWith(call("https://graph.microsoft.com"), "invalid_request");
+  await rejectsWith(call(`${SHAREPOINT}/sites`), "invalid_request");
+  await rejectsWith(call(SHAREPOINT, "not-a-jwt"), "invalid_request");
+  await rejectsWith(
+    call(SHAREPOINT, `a.${"b".repeat(17_000)}.c`),
+    "invalid_request",
+  );
+  await rejectsWith(
+    entraOnBehalfOf({ kind: "okta" }, alice.provider, token, SHAREPOINT, [
+      SHAREPOINT,
+    ]),
+    "provider_misconfigured",
+  );
+  for (const bad of [`${SHAREPOINT}/`, `${SHAREPOINT} openid`, "acme"])
+    await rejectsWith(
+      entraOnBehalfOf(entra, alice.provider, token, SHAREPOINT, [
+        SHAREPOINT,
+        bad,
+      ]),
+      "provider_misconfigured",
+    );
+});
+
+test("on-behalf-of is denied for tokens not issued to this app in this tenant", async () => {
+  const acme = await signIn(
+    "entra",
+    `${base}/entra/${ACME}/v2.0`,
+    "alice@acme.example",
+  );
+  assert.equal(
+    decodeJwt(acme.login.providerAccessToken).aud,
+    "https://graph.microsoft.com",
+  );
+  const globex = await signIn(
+    "entra",
+    `${base}/entra/${GLOBEX}/v2.0`,
+    undefined,
+    appScopes(),
+  );
+  for (const assertion of [
+    acme.login.providerAccessToken,
+    globex.login.providerAccessToken,
+    await acme.provider.clientCredentials(`${client.id}/.default`),
+  ])
+    await rejectsWith(
+      entraOnBehalfOf(entra, acme.provider, assertion, SHAREPOINT, [
+        SHAREPOINT,
+      ]),
+      "provider_denied",
+    );
 });

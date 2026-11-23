@@ -16,6 +16,7 @@ import {
 
 export const GRAPH_AUDIENCE = "https://graph.microsoft.com";
 const GRAPH_GROUP_ROLE = "GroupMember.Read.All";
+const JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 const MAX_CODES = 100;
 const CODE_TTL_MS = 60_000;
 const TOKEN_TTL_S = 300;
@@ -220,7 +221,11 @@ export async function createIdp({ baseUrl, publicUrl = baseUrl, config }) {
       token_endpoint: `${baseUrl}${paths.token}`,
       jwks_uri: `${baseUrl}${paths.jwks}`,
       response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "client_credentials"],
+      grant_types_supported: [
+        "authorization_code",
+        "client_credentials",
+        ...(realm.kind === "entra" ? [JWT_BEARER] : []),
+      ],
       subject_types_supported: [realm.kind === "entra" ? "pairwise" : "public"],
       id_token_signing_alg_values_supported: ["RS256"],
       code_challenge_methods_supported: ["S256"],
@@ -330,13 +335,21 @@ export async function createIdp({ baseUrl, publicUrl = baseUrl, config }) {
     };
   }
 
+  function entraResource(scope) {
+    for (const s of scope.split(" ")) {
+      const m = /^api:\/\/([^/\s]+)\/[^/\s]+$/.exec(s);
+      if (m) return m[1];
+    }
+    return GRAPH_AUDIENCE;
+  }
+
   function accessToken(realm, client, user, scope) {
     if (realm.kind === "entra")
       return sign(
         realm,
         { tid: realm.id, oid: user.claims.oid, scp: scope, ver: "2.0" },
         user.claims.oid,
-        GRAPH_AUDIENCE,
+        entraResource(scope),
       );
     if (realm.kind === "okta")
       // Okta's access token `sub` is the login, not the user ID the ID token carries.
@@ -430,6 +443,42 @@ export async function createIdp({ baseUrl, publicUrl = baseUrl, config }) {
         token_type: "Bearer",
         expires_in: TOKEN_TTL_S,
         access_token: await sign(realm, claims, client.id, aud),
+      });
+    }
+    if (grant === JWT_BEARER && realm.kind === "entra") {
+      const m = /^(\S+)\/\.default$/.exec(form.get("scope") ?? "");
+      if (form.get("requested_token_use") !== "on_behalf_of" || !m)
+        return json(res, 400, { error: "invalid_request" });
+      let user;
+      try {
+        ({ payload: user } = await jwtVerify(
+          form.get("assertion") ?? "",
+          realm.keySet,
+          { issuer: realm.iss, audience: client.id, algorithms: ["RS256"] },
+        ));
+      } catch {
+        return json(res, 400, { error: "invalid_grant" });
+      }
+      if (user.idtyp === "app" || typeof user.oid !== "string" || !user.scp)
+        return json(res, 400, { error: "invalid_grant" });
+      return json(res, 200, {
+        token_type: "Bearer",
+        expires_in: TOKEN_TTL_S,
+        access_token: await sign(
+          realm,
+          {
+            tid: realm.id,
+            oid: user.oid,
+            azp: client.id,
+            scp: "user_impersonation",
+            ver: "2.0",
+          },
+          createHash("sha256")
+            .update(`${user.oid}\0${m[1]}`)
+            .digest("base64url")
+            .slice(0, 43),
+          m[1],
+        ),
       });
     }
     return json(res, 400, { error: "unsupported_grant_type" });
