@@ -171,14 +171,19 @@ async function findLinked(
   connection: ConnectionPolicy,
   key: ExternalKey,
 ) {
-  const { rows } = await db.query<{ id: string; status: PrincipalStatus }>(
+  const { rows } = await db.query<{
+    id: string;
+    status: PrincipalStatus;
+    type: string;
+  }>(
     `UPDATE external_identities e
-        SET last_verified_at = CASE WHEN p.status = 'active' THEN now() ELSE e.last_verified_at END
+        SET last_verified_at = CASE WHEN p.status = 'active' AND p.type = 'user'
+                                    THEN now() ELSE e.last_verified_at END
        FROM principals p
       WHERE e.tenant_id = $1 AND e.provider_connection_id = $2 AND e.issuer = $3
         AND e.subject = $4 AND e.external_tenant_id IS NOT DISTINCT FROM $5
-        AND p.tenant_id = e.tenant_id AND p.id = e.principal_id AND p.type = 'user'
-      RETURNING p.id, p.status`,
+        AND p.tenant_id = e.tenant_id AND p.id = e.principal_id
+      RETURNING p.id, p.status, p.type`,
     [
       connection.tenantId,
       connection.id,
@@ -280,7 +285,7 @@ export async function resolvePrincipal(
       throw new PrincipalError("unknown_identity");
     const id = await createJit(db, connection, key);
     if (id) {
-      principal = { id, status: "active" };
+      principal = { id, status: "active", type: "user" };
       created = true;
     } else {
       principal = await findLinked(db, connection, key);
@@ -290,6 +295,7 @@ export async function resolvePrincipal(
         );
     }
   }
+  if (principal.type !== "user") throw new PrincipalError("principal_not_user");
   if (principal.status !== "active")
     throw new PrincipalError("principal_inactive");
   return {
