@@ -105,6 +105,31 @@ export async function graphMemberGroups(
   return value;
 }
 
+const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const MAX_ASSERTION_LENGTH = 16 * 1024;
+const ENTRA_RESOURCE = /^(https|api):\/\/[^\s/]+(\/[^\s/]+)*$/;
+
+export async function entraOnBehalfOf(
+  connection: Pick<ConnectionPolicy, "kind">,
+  provider: Pick<OidcProvider, "onBehalfOf">,
+  userAssertion: string,
+  resource: string,
+  allowedResources: readonly string[],
+): Promise<{ accessToken: string; expiresAt: Date | undefined }> {
+  if (
+    connection.kind !== "entra" ||
+    !allowedResources.every((r) => ENTRA_RESOURCE.test(r))
+  )
+    throw new OidcError("provider_misconfigured");
+  if (
+    !allowedResources.includes(resource) ||
+    userAssertion.length > MAX_ASSERTION_LENGTH ||
+    !JWT.test(userAssertion)
+  )
+    throw new OidcError("invalid_request");
+  return provider.onBehalfOf(userAssertion, `${resource}/.default`);
+}
+
 export async function overageGroups(
   connection: Pick<ConnectionPolicy, "kind" | "groupClaim">,
   provider: Pick<OidcProvider, "clientCredentials">,

@@ -61,6 +61,13 @@ function classify(err: unknown): OidcErrorCode {
   return "invalid_callback";
 }
 
+const JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+
+function oboFailure(err: unknown): OidcErrorCode {
+  const code = classify(err);
+  return code === "invalid_callback" ? "provider_misconfigured" : code;
+}
+
 export class OidcError extends Error {
   constructor(
     readonly code: OidcErrorCode,
@@ -138,6 +145,40 @@ export class OidcProvider {
     } catch (err) {
       throw new OidcError(classify(err), { cause: err });
     }
+  }
+
+  async onBehalfOf(
+    assertion: string,
+    scope: string,
+  ): Promise<{ accessToken: string; expiresAt: Date | undefined }> {
+    let tokens: oidc.TokenEndpointResponse;
+    try {
+      tokens = await oidc.genericGrantRequest(this.config, JWT_BEARER, {
+        assertion,
+        scope,
+        requested_token_use: "on_behalf_of",
+      });
+    } catch (err) {
+      const denied =
+        err instanceof oidc.ResponseBodyError &&
+        err.status < 500 &&
+        [
+          "invalid_grant",
+          "invalid_request",
+          "interaction_required",
+          "consent_required",
+        ].includes(err.error);
+      throw new OidcError(denied ? "provider_denied" : oboFailure(err), {
+        cause: err,
+      });
+    }
+    return {
+      accessToken: tokens.access_token,
+      expiresAt:
+        tokens.expires_in === undefined
+          ? undefined
+          : new Date(Date.now() + tokens.expires_in * 1000),
+    };
   }
 
   // The callback URL is rebuilt from the configured redirect URI, never the request's Host.
