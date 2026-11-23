@@ -125,7 +125,7 @@ export function parseExchangeRequest(form: URLSearchParams): ExchangeRequest {
   };
 }
 
-async function allActive(
+export async function allActive(
   db: Pool,
   tenantId: string,
   principals: { id: string; type?: string }[],

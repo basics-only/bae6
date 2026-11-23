@@ -16,7 +16,7 @@ import { OidcError } from "./oidc.js";
 import { PrincipalError, setPrincipalStatus } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { createSession, readSession, SESSION_COOKIE } from "./sessions.js";
-import { mintToken } from "./tokens.js";
+import { type MintInput, mintToken } from "./tokens.js";
 
 const url = process.env.BAE6_DATABASE_URL;
 const skip = url ? false : "BAE6_DATABASE_URL not set";
@@ -80,7 +80,7 @@ before(async () => {
             ('globex', 'ping', 'pingfederate', 'https://ping.example/globex', 'c', 's', true, 'active')`,
     [ISSUER],
   );
-  await syncKeys(db, signers);
+  await syncKeys(db, signers, signer.kid);
   server = createAuthnApi({
     ping: async () => {},
     requestTimeoutMs: 5000,
@@ -208,6 +208,10 @@ test(
     await db.query(
       "UPDATE provider_connections SET display_name = 'Acme SSO' WHERE tenant_id = 'acme' AND id = 'ping'",
     );
+    await db.query(
+      `INSERT INTO provider_connections (tenant_id, id, kind, issuer, client_id, client_secret_ref)
+       VALUES ('acme', 'unpinned', 'entra', 'https://login.microsoftonline.com/common/v2.0', 'c', 's')`,
+    );
     const res = await get("/auth/providers");
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), {
@@ -220,6 +224,15 @@ test(
       `http://localhost:${new URL(base).port}/auth/providers`,
     );
     assert.equal(other.status, 404);
+    for (const spoof of ["Okta‮gnp.", "   ", "a​b", "a\nb", "Ok⁠ta", "Ok­ta"])
+      await assert.rejects(
+        db.query(
+          "UPDATE provider_connections SET display_name = $1 WHERE tenant_id = 'acme' AND id = 'ping'",
+          [spoof],
+        ),
+        /provider_connections_display_name_check/,
+        JSON.stringify(spoof),
+      );
   },
 );
 
@@ -230,32 +243,49 @@ test(
     const cookie = sessionCookie(await signIn("hank"));
     const s = await readSession(db, cookie.split("=")[1]);
     assert.ok(s);
-    const token = async (aud: string, session_id = s.id) =>
+    const helper = `prn_${"8".repeat(32)}`;
+    const outsider = `prn_${"6".repeat(32)}`;
+    await db.query(
+      `INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'acme', 'user'), ($2, 'globex', 'user')`,
+      [helper, outsider],
+    );
+    const token = async (claims: Partial<MintInput> = {}) =>
       (
         await mintToken(db, signers, AUTHN_ISSUER, {
-          aud,
+          aud: AUTHN_AUDIENCE,
           sub: s.principalId,
           txn: "req-1",
           tenant_id: "acme",
           org_path: ["acme"],
           principal_type: "user",
-          session_id,
+          session_id: s.id,
+          ...claims,
         })
       ).token;
-    const me = (authorization: string) =>
-      fetch(`http://localhost:${new URL(base).port}/auth/me`, {
-        headers: { authorization },
+    const me = (authorization: string, host = base, cookie?: string) =>
+      fetch(`${host}/auth/me`, {
+        headers: { authorization, ...(cookie ? { cookie } : {}) },
       });
-    const ok = await me(`Bearer ${await token(AUTHN_AUDIENCE)}`);
+    const ok = await me(`bearer ${await token()}`);
     assert.equal(ok.status, 200);
     assert.equal((await ok.json()).principal.id, s.principalId);
+    assert.equal((await me("Basic abc", base, cookie)).status, 200);
+    const acted = await token({ act: { sub: helper } });
+    assert.equal((await me(`Bearer ${acted}`)).status, 200);
+    await db.query("UPDATE principals SET status = 'disabled' WHERE id = $1", [
+      helper,
+    ]);
     for (const bad of [
-      `Bearer ${await token("gateway")}`,
-      `Bearer ${await token(AUTHN_AUDIENCE, `ses_${"9".repeat(32)}`)}`,
+      `Bearer ${acted}`,
+      `Bearer ${await token({ aud: "gateway" })}`,
+      `Bearer ${await token({ session_id: `ses_${"9".repeat(32)}` })}`,
+      `Bearer ${await token({ principal_type: "service" })}`,
+      `Bearer ${await token({ sub: outsider, tenant_id: "globex", org_path: ["globex"] })}`,
       "Bearer not-a-token",
-      "Basic abc",
     ])
       assert.equal((await me(bad)).status, 401, bad.slice(0, 20));
+    const unmapped = `http://localhost:${new URL(base).port}`;
+    assert.equal((await me(`Bearer ${await token()}`, unmapped)).status, 404);
   },
 );
 

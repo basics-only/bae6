@@ -5,7 +5,7 @@ import {
   type GraphOptions,
   overageGroups,
 } from "./adapters.js";
-import { sessionLive } from "./exchange.js";
+import { allActive, sessionLive } from "./exchange.js";
 import { HttpError, send } from "./http.js";
 import {
   OidcError,
@@ -33,7 +33,7 @@ export const CSRF_COOKIE = "__Host-bae6-csrf";
 export const AUTHN_AUDIENCE = "bae6-authn";
 const LOGIN_TTL_SECONDS = 600;
 const MAX_PROVIDERS = 50;
-const BEARER = /^Bearer ([A-Za-z0-9_.-]{1,8192})$/;
+const BEARER = /^bearer ([A-Za-z0-9_.-]{1,8192})$/i;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const RETURN_TO = /^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]{0,1023}$/;
 const OPAQUE = /^[A-Za-z0-9_-]{1,128}$/;
@@ -245,7 +245,8 @@ export function createBffRoutes(deps: BffDeps) {
     return s;
   }
 
-  async function bearerCaller(authorization: string) {
+  async function bearerCaller(req: IncomingMessage, authorization: string) {
+    const { tenantId } = site(req);
     const token = BEARER.exec(authorization)?.[1];
     const unauthenticated = new HttpError(
       401,
@@ -263,19 +264,25 @@ export function createBffRoutes(deps: BffDeps) {
       if (err instanceof TokenError) throw unauthenticated;
       throw err;
     }
+    const principals: { id: string; type?: string }[] = [
+      { id: claims.sub, type: claims.principal_type },
+    ];
+    if (claims.act) principals.push({ id: claims.act.sub });
     if (
-      claims.session_id !== undefined &&
-      !(await sessionLive(db, claims.tenant_id, claims.sub, claims.session_id))
+      claims.tenant_id !== tenantId ||
+      !(await allActive(db, tenantId, principals)) ||
+      (claims.session_id !== undefined &&
+        !(await sessionLive(db, tenantId, claims.sub, claims.session_id)))
     )
       throw unauthenticated;
-    return { tenantId: claims.tenant_id, principalId: claims.sub };
+    return { tenantId, principalId: claims.sub };
   }
 
   async function me(req: IncomingMessage, res: ServerResponse) {
-    const s =
-      req.headers.authorization === undefined
-        ? await currentSession(req)
-        : await bearerCaller(req.headers.authorization);
+    const authorization = req.headers.authorization;
+    const s = /^bearer /i.test(authorization ?? "")
+      ? await bearerCaller(req, authorization as string)
+      : await currentSession(req);
     const { rows } = await db.query(
       `SELECT id, tenant_id AS "tenantId", type, status,
               owner_application_id AS "ownerApplicationId",
@@ -298,13 +305,33 @@ export function createBffRoutes(deps: BffDeps) {
 
   async function providers(req: IncomingMessage, res: ServerResponse) {
     const { tenantId } = site(req);
-    const { rows } = await db.query(
-      `SELECT id, kind, COALESCE(display_name, id) AS "displayName"
+    const { rows } = await db.query<{
+      id: string;
+      kind: ConnectionPolicy["kind"];
+      issuer: string;
+      displayName: string;
+    }>(
+      `SELECT id, kind, issuer, COALESCE(display_name, id) AS "displayName"
          FROM provider_connections WHERE tenant_id = $1 AND status = 'active'
         ORDER BY "displayName", id LIMIT $2`,
       [tenantId, MAX_PROVIDERS],
     );
-    send(res, 200, { providers: rows });
+    const usable = rows.filter((c) => {
+      try {
+        checkConnection(c, { allowHttp: deps.allowHttp ?? false });
+        return true;
+      } catch (err) {
+        if (err instanceof OidcError) return false;
+        throw err;
+      }
+    });
+    send(res, 200, {
+      providers: usable.map(({ id, kind, displayName }) => ({
+        id,
+        kind,
+        displayName,
+      })),
+    });
   }
 
   async function logout(req: IncomingMessage, res: ServerResponse) {
