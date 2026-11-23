@@ -242,17 +242,46 @@ test(
 );
 
 test(
-  "group overage is refused until Graph lookup exists",
+  "group overage uses the groups the adapter fetched, and is refused without them",
   { skip },
   async () => {
+    const entra = await connection("acme", "entra");
+    const overage = entraLogin("overage", {
+      _claim_names: { groups: "src1" },
+      groups: ["g-retired"],
+    });
+    await rejectsWith(
+      resolvePrincipal(db, entra, overage),
+      "group_overage_unresolved",
+    );
+    const resolved = await resolvePrincipal(db, entra, overage, ["g-eng"]);
+    assert.deepEqual(resolved.groupPrincipalIds, [ENGINEERING]);
+    await rejectsWith(
+      resolvePrincipal(db, entra, overage, [1]),
+      "invalid_groups",
+    );
+    const many = Array.from({ length: 5000 }, (_, i) => `g-${i}`);
+    assert.deepEqual(
+      (await resolvePrincipal(db, entra, overage, [...many, "g-eng"]))
+        .groupPrincipalIds,
+      [ENGINEERING],
+    );
     await rejectsWith(
       resolvePrincipal(
         db,
-        await connection("acme", "entra"),
-        entraLogin("overage", { _claim_names: { groups: "src1" } }),
+        entra,
+        overage,
+        Array.from({ length: 20_001 }, (_, i) => `g-${i}`),
       ),
-      "group_overage_unsupported",
+      "invalid_groups",
     );
+    const inToken = await resolvePrincipal(
+      db,
+      entra,
+      entraLogin("overage", { groups: [] }),
+      ["g-eng"],
+    );
+    assert.deepEqual(inToken.groupPrincipalIds, []);
   },
 );
 

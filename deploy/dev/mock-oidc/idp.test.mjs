@@ -147,6 +147,20 @@ test("Entra replaces groups with a Graph pointer past the overage limit, and Gra
   assert.equal((await res.json()).value.length, 6);
 });
 
+test("Graph refuses a signed-in user's delegated token for group lookups", async () => {
+  const { id, body } = await login("entra", ACME, {
+    login_hint: "bob@acme.example",
+  });
+  const res = await fetch(
+    `${base}/entra/graph/v1.0/users/${id.oid}/getMemberObjects`,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${body.access_token}` },
+    },
+  );
+  assert.equal(res.status, 403);
+});
+
 test("Graph will not show one Entra tenant's users to another tenant's token", async () => {
   const d = await meta("entra", GLOBEX);
   const other = (

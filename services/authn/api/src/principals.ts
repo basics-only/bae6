@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from "pg";
 import type { VerifiedLogin } from "./oidc.js";
 
 const MAX_GROUPS = 1000;
+const MAX_OVERAGE_GROUPS = 20_000;
 const MAX_GROUP_LENGTH = 256;
 
 export type PrincipalErrorCode =
@@ -13,7 +14,7 @@ export type PrincipalErrorCode =
   | "principal_inactive"
   | "principal_not_user"
   | "invalid_groups"
-  | "group_overage_unsupported"
+  | "group_overage_unresolved"
   | "unknown_principal"
   | "unknown_connection"
   | "invalid_transition"
@@ -123,24 +124,39 @@ function externalKey(
   return { issuer, subject, externalTenantId: tid, externalObjectId: oid };
 }
 
+export function hasGroupOverage(
+  connection: Pick<ConnectionPolicy, "groupClaim">,
+  claims: Readonly<Record<string, unknown>>,
+): boolean {
+  const claim = connection.groupClaim;
+  if (!claim) return false;
+  const pointers = claims._claim_names;
+  return (
+    typeof pointers === "object" &&
+    pointers !== null &&
+    Object.hasOwn(pointers, claim)
+  );
+}
+
 function externalGroups(
   connection: ConnectionPolicy,
   claims: Readonly<Record<string, unknown>>,
+  overageGroups: unknown,
 ): string[] {
   const claim = connection.groupClaim;
   if (!claim) return [];
-  const pointers = claims._claim_names;
-  if (
-    pointers &&
-    typeof pointers === "object" &&
-    Object.hasOwn(pointers, claim)
-  )
-    throw new PrincipalError("group_overage_unsupported");
-  if (!Object.hasOwn(claims, claim)) return [];
-  const value = claims[claim];
+  let value: unknown;
+  let limit = MAX_GROUPS;
+  if (hasGroupOverage(connection, claims)) {
+    if (overageGroups === undefined)
+      throw new PrincipalError("group_overage_unresolved");
+    value = overageGroups;
+    limit = MAX_OVERAGE_GROUPS;
+  } else if (Object.hasOwn(claims, claim)) value = claims[claim];
+  else return [];
   if (
     !Array.isArray(value) ||
-    value.length > MAX_GROUPS ||
+    value.length > limit ||
     !value.every(
       (g) =>
         typeof g === "string" && g.length >= 1 && g.length <= MAX_GROUP_LENGTH,
@@ -251,11 +267,12 @@ export async function resolvePrincipal(
   db: Pool,
   connection: ConnectionPolicy,
   identity: VerifiedLogin["identity"],
+  overageGroups?: unknown,
 ): Promise<ResolvedPrincipal> {
   if (connection.status !== "active")
     throw new PrincipalError("connection_unavailable");
   const key = externalKey(connection, identity);
-  const groups = externalGroups(connection, identity.claims);
+  const groups = externalGroups(connection, identity.claims, overageGroups);
   let principal = await findLinked(db, connection, key);
   let created = false;
   if (!principal) {
