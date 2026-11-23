@@ -10,6 +10,11 @@ export interface AuthnApiDeps {
   ping(): Promise<void>;
   requestTimeoutMs: number;
   log?: (event: Record<string, unknown>) => void;
+  routes?: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: URL,
+  ) => Promise<boolean>;
 }
 
 const WRITE_DEADLINE_MS = 30_000;
@@ -47,6 +52,7 @@ export function createAuthnApi(deps: AuthnApiDeps) {
       await ready();
       return send(res, 200, { status: "ok" });
     }
+    if (deps.routes && (await deps.routes(req, res, url))) return;
     throw new HttpError(404, "not_found", "Not found.");
   }
 

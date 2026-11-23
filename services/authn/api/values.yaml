@@ -14,6 +14,9 @@ terminationGracePeriodSeconds: 60
 env:
   BAE6_SHUTDOWN_DELAY_MS: "10000"
   BAE6_AUTHN_DB_POOL_MAX: "10"
+  BAE6_AUTHN_SECRETS_DIR: /run/secrets/authn
+  # Required per deployment: the hosts this replica serves sign-in for, as host=tenant pairs.
+  BAE6_AUTHN_TENANT_HOSTS: ""
 
 envFromSecrets:
   - name: BAE6_AUTHN_DATABASE_URL
@@ -29,9 +32,10 @@ resources:
 
 networkPolicy:
   egress:
-    # Postgres only for now; identity-provider egress is added with the OIDC slice.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
         - port: 5432
+        # Identity providers and Microsoft Graph.
+        - port: 443
