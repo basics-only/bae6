@@ -177,13 +177,13 @@ class Authn:
         return Me(principal=cast(Principal, principal), org_path=org_path)
 
     async def place_principal(
-        self, *, tenant_id: str, principal_id: str, org_path: list[str]
+        self, *, tenant_id: str, principal_id: str, principal_type: str, org_path: list[str]
     ) -> list[str]:
         """Moves a principal to `org_path`; needs the placement client secret."""
         body = await self._http.json(
             "PUT",
             f"/admin/principals/{quote(principal_id, safe='')}/org-path",
-            body={"tenantId": tenant_id, "orgPath": org_path},
+            body={"tenantId": tenant_id, "principalType": principal_type, "orgPath": org_path},
         )
         stored = body.get("orgPath") if isinstance(body, dict) else None
         if not isinstance(stored, list) or not all(isinstance(p, str) for p in stored):

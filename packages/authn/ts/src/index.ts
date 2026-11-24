@@ -166,12 +166,19 @@ export class Authn {
   async placePrincipal(input: {
     tenantId: string;
     principalId: string;
+    principalType: string;
     orgPath: string[];
   }): Promise<string[]> {
     const body = await this.#http.json(
       "PUT",
       `/admin/principals/${encodeURIComponent(input.principalId)}/org-path`,
-      { body: { tenantId: input.tenantId, orgPath: input.orgPath } },
+      {
+        body: {
+          tenantId: input.tenantId,
+          principalType: input.principalType,
+          orgPath: input.orgPath,
+        },
+      },
     );
     if (
       !isObject(body) ||

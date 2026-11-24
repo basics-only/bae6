@@ -27,7 +27,12 @@ const OPERATOR = "service:platform";
 const ROOTADM = "user:rootadm";
 const FIN = "user:fin";
 
-type Placement = { tenantId: string; principalId: string; orgPath: string[] };
+type Placement = {
+  tenantId: string;
+  principalId: string;
+  principalType: string;
+  orgPath: string[];
+};
 class FakeAuthn {
   calls: Placement[] = [];
   failing = false;
@@ -738,6 +743,7 @@ test(
         {
           tenantId: "acme",
           principalId: ALICE_ID,
+          principalType: "user",
           orgPath: ["acme", "finance", "payroll"],
         },
       ]);
@@ -775,14 +781,14 @@ test(
 );
 
 test(
-  "placement refuses unknown units, non-principal subjects and non-admins without calling authn",
+  "placement refuses units the actor cannot administer, non-principal subjects and non-admins without calling authn",
   opts,
   async () => {
     await withTenant(async ({ svc, authn }) => {
       await svc.createUnit(ROOTADM, "finance", "acme");
       await assert.rejects(
         svc.placePrincipal(ROOTADM, ALICE, "ghost"),
-        status(404),
+        status(403),
       );
       await assert.rejects(
         svc.placePrincipal(ROOTADM, "user:alice", "finance"),
@@ -892,6 +898,22 @@ test(
         }),
       });
       await assert.rejects(svc.check(ALICE, "model", "llm"), status(503));
+    });
+  },
+);
+
+test(
+  "an actor without admin rights cannot tell a missing unit from an existing one",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, authn }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      for (const unit of ["finance", "nowhere"])
+        await assert.rejects(
+          svc.placePrincipal("user:nobody", ALICE, unit),
+          status(403),
+        );
+      assert.deepEqual(authn.calls, []);
     });
   },
 );

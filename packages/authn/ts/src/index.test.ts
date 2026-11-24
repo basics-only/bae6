@@ -212,6 +212,7 @@ test("placePrincipal puts the tenant and path as JSON and returns the stored pat
     const path = await s.authn.placePrincipal({
       tenantId: "acme",
       principalId: "prn_x",
+      principalType: "user",
       orgPath: ["acme", "finance"],
     });
     assert.deepEqual(path, ["acme", "finance"]);
@@ -221,6 +222,7 @@ test("placePrincipal puts the tenant and path as JSON and returns the stored pat
     assert.equal(req?.headers.authorization, `Bearer ${SECRET}`);
     assert.deepEqual(JSON.parse(req?.body ?? ""), {
       tenantId: "acme",
+      principalType: "user",
       orgPath: ["acme", "finance"],
     });
   } finally {
@@ -240,6 +242,7 @@ test("placePrincipal maps refusals to typed errors", async () => {
         .placePrincipal({
           tenantId: "acme",
           principalId: "prn_x",
+          principalType: "user",
           orgPath: ["acme"],
         })
         .catch((e: unknown) => e);

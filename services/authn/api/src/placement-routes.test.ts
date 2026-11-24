@@ -70,6 +70,7 @@ test(
   async () => {
     const res = await put(ALICE, {
       tenantId: "acme",
+      principalType: "user",
       orgPath: ["acme", "finance"],
     });
     assert.equal(res.status, 200);
@@ -86,7 +87,11 @@ test(
   "placement refuses callers without the placement client secret",
   { skip },
   async () => {
-    const body = { tenantId: "acme", orgPath: ["acme", "legal"] };
+    const body = {
+      tenantId: "acme",
+      principalType: "user",
+      orgPath: ["acme", "legal"],
+    };
     const json = { "content-type": "application/json" };
     for (const headers of [
       json,
@@ -110,22 +115,48 @@ test(
       assert.equal((await res.json()).code, code);
     };
     await refused(
-      await put(ALICE, { tenantId: "acme", orgPath: ["globex", "finance"] }),
+      await put(ALICE, {
+        tenantId: "acme",
+        principalType: "user",
+        orgPath: ["globex", "finance"],
+      }),
       400,
       "invalid_request",
     );
     await refused(
-      await put(ALICE, { tenantId: "globex", orgPath: ["globex", "x"] }),
+      await put(ALICE, {
+        tenantId: "globex",
+        principalType: "user",
+        orgPath: ["globex", "x"],
+      }),
       404,
       "unknown_principal",
     );
     await refused(
-      await put(GLOBEX_USER, { tenantId: "acme", orgPath: ["acme", "x"] }),
+      await put(GLOBEX_USER, {
+        tenantId: "acme",
+        principalType: "user",
+        orgPath: ["acme", "x"],
+      }),
       404,
       "unknown_principal",
     );
     await refused(
-      await put(ALICE, { tenantId: "acme" }),
+      await put(ALICE, { tenantId: "acme", principalType: "user" }),
+      400,
+      "invalid_request",
+    );
+    await refused(
+      await put(ALICE, { tenantId: "acme", orgPath: ["acme", "x"] }),
+      400,
+      "invalid_request",
+    );
+    await refused(
+      await put(ALICE, {
+        tenantId: "acme",
+        principalType: "service",
+        orgPath: ["acme", "x"],
+      }),
       400,
       "invalid_request",
     );
@@ -142,6 +173,7 @@ test(
     await refused(
       await put(ALICE, {
         tenantId: "acme",
+        principalType: "user",
         orgPath: ["acme", "x".repeat(5000)],
       }),
       400,

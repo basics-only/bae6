@@ -172,6 +172,7 @@ test(
       setPrincipalOrgPath(db, {
         tenantId: "acme",
         principalId: ALICE,
+        principalType: "user",
         orgPath,
         actor: "authz",
       });

@@ -172,7 +172,10 @@ def test_place_principal_puts_json_and_returns_the_stored_path() -> None:
     path = _run(
         handler,
         lambda authn: authn.place_principal(
-            tenant_id="acme", principal_id="prn_x", org_path=["acme", "finance"]
+            tenant_id="acme",
+            principal_id="prn_x",
+            principal_type="user",
+            org_path=["acme", "finance"],
         ),
     )
     assert path == ["acme", "finance"]
@@ -180,7 +183,11 @@ def test_place_principal_puts_json_and_returns_the_stored_path() -> None:
     assert request.method == "PUT"
     assert request.url.path == "/admin/principals/prn_x/org-path"
     assert request.headers["authorization"] == f"Bearer {SECRET}"
-    assert json.loads(request.content) == {"tenantId": "acme", "orgPath": ["acme", "finance"]}
+    assert json.loads(request.content) == {
+        "tenantId": "acme",
+        "principalType": "user",
+        "orgPath": ["acme", "finance"],
+    }
 
 
 @pytest.mark.parametrize(
@@ -194,7 +201,10 @@ def test_place_principal_maps_refusals_to_typed_errors(
         _run(
             lambda _request: httpx.Response(status, json={"code": "refused"}),
             lambda authn: authn.place_principal(
-                tenant_id="acme", principal_id="prn_x", org_path=["acme"]
+                tenant_id="acme",
+                principal_id="prn_x",
+                principal_type="user",
+                org_path=["acme"],
             ),
         )
     assert caught.value.status == status

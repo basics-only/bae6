@@ -441,6 +441,7 @@ export async function setPrincipalOrgPath(
   change: {
     tenantId: string;
     principalId: string;
+    principalType: string;
     orgPath: string[];
     actor: string;
   },
@@ -458,13 +459,16 @@ export async function setPrincipalOrgPath(
   return inTransaction(db, async (client) => {
     const { rows } = await client.query<{
       status: PrincipalStatus;
+      type: string;
       org_path: string[];
     }>(
-      "SELECT status, org_path FROM principals WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+      "SELECT status, type, org_path FROM principals WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
       [change.tenantId, change.principalId],
     );
     const current = rows[0];
     if (!current) throw new PrincipalError("unknown_principal");
+    if (current.type !== change.principalType)
+      throw new PrincipalError("invalid_request");
     if (current.status === "deprovisioned")
       throw new PrincipalError("invalid_transition");
     if (current.org_path.join() === orgPath.join()) return;

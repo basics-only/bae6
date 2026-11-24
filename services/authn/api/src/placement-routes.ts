@@ -60,17 +60,22 @@ export function createPlacementRoutes(deps: {
       res.setHeader("www-authenticate", "Bearer");
       throw new HttpError(401, "unauthorized", "Invalid client credentials.");
     }
-    const { tenantId, orgPath } = await readJson(req);
-    if (typeof tenantId !== "string" || !Array.isArray(orgPath))
+    const { tenantId, principalType, orgPath } = await readJson(req);
+    if (
+      typeof tenantId !== "string" ||
+      typeof principalType !== "string" ||
+      !Array.isArray(orgPath)
+    )
       throw new HttpError(
         400,
         "invalid_request",
-        "tenantId and orgPath are required.",
+        "tenantId, principalType and orgPath are required.",
       );
     try {
       await setPrincipalOrgPath(deps.db, {
         tenantId,
         principalId,
+        principalType,
         orgPath,
         actor: `client:${PLACEMENT_CLIENT}`,
       });
