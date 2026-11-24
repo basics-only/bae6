@@ -23,7 +23,7 @@ export function bae6Authenticator(config: {
     throw new Error("organization is not a valid organization id");
   const keys = createRemoteJWKSet(new URL(config.jwksUri), {
     cooldownDuration: 30_000,
-    cacheMaxAge: 600_000,
+    cacheMaxAge: 300_000,
     timeoutDuration: 5_000,
   });
   return async (authorization) => {
