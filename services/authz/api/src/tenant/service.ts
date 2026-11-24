@@ -347,9 +347,15 @@ export function createTenantService(deps: {
       async () => {
         await requireRelation(actor, `can_grant_${capability}_admin`, node);
         if (!enable && (await isRoot(node))) {
-          const others = (
-            await read({ object: node, relation: tuple.relation })
-          ).filter((t) => t.key.user !== subject);
+          const { tuples } = await fga(
+            () =>
+              client.read(
+                { object: node, relation: tuple.relation },
+                { pageSize: 2 },
+              ),
+            unavailable,
+          );
+          const others = tuples.filter((t) => t.key.user !== subject);
           if (others.length === 0) {
             throw conflict(
               "The root must keep an administrator for each capability.",

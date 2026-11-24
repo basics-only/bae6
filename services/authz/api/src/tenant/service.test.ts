@@ -679,3 +679,22 @@ test(
     });
   },
 );
+
+test(
+  "a root admin can be revoked when more than a page of others remain",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client }) => {
+      for (const start of [0, 60]) {
+        await client.write({
+          writes: Array.from({ length: 60 }, (_, i) => ({
+            user: `user:bulk${start + i}`,
+            relation: "access_admin_grant",
+            object: "org_unit:acme",
+          })),
+        });
+      }
+      await svc.revoke(ROOTADM, "access", ROOTADM, "acme");
+    });
+  },
+);
