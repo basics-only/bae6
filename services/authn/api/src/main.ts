@@ -13,6 +13,7 @@ import {
   type Signer,
   syncKeys,
 } from "./keys.js";
+import { cloudKmsSigner, metadataAccessToken } from "./kms.js";
 import { OidcError, OidcProvider } from "./oidc.js";
 import { createPlacementRoutes, PLACEMENT_CLIENT } from "./placement-routes.js";
 import type { ConnectionPolicy } from "./principals.js";
@@ -135,8 +136,11 @@ if (!activeRef || !keyRefs.map((r) => r.trim()).includes(activeRef))
   );
 const signers = new Map<string, Signer>();
 let activeKid = "";
+const kmsAccessToken = metadataAccessToken();
 for (const ref of keyRefs.map((r) => r.trim())) {
-  const signer = localSigner(await readSecret(ref, keysDir));
+  const signer = ref.startsWith("gcp-kms:")
+    ? await cloudKmsSigner(ref.slice("gcp-kms:".length), kmsAccessToken)
+    : localSigner(await readSecret(ref, keysDir));
   signers.set(signer.kid, signer);
   if (ref === activeRef) activeKid = signer.kid;
 }
