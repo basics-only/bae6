@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Literal, Self, Unpack
+from urllib.parse import quote
 
 import httpx
 from bae6_sdk_core import Credentials, Errors, Options, parse_json
@@ -284,6 +285,22 @@ class Authz:
             model_id=_str(body.get("modelId")),
             next_cursor=_str(body.get("nextCursor")),
         )
+
+    async def place_principal(
+        self,
+        *,
+        principal_id: str,
+        principal_type: Literal["user", "service", "agent", "application"],
+        unit: str,
+    ) -> None:
+        """Places a principal in an org unit of the caller's tenant; the credential must be a bae6 token for authz."""
+        parsed = await self._http.json(
+            "PUT",
+            f"/v1/tenant/principals/{quote(principal_id, safe='')}/unit",
+            body={"principalType": principal_type, "unit": unit},
+        )
+        if not isinstance(parsed, dict) or parsed.get("unit") != unit:
+            raise _invalid_response()
 
     async def _post(
         self, path: str, end_user_token: str, payload: dict[str, object]

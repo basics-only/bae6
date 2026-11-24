@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { OpenFgaClient } from "@openfga/sdk";
 import { transformer } from "@openfga/syntax-transformer";
 import pg from "pg";
 import { createAdminAuthorizer } from "./admin/authorizer.js";
@@ -11,6 +12,7 @@ import { relationshipRoutes } from "./admin/relationshipRoutes.js";
 import { createRelationshipService } from "./admin/relationships.js";
 import { adminRoutes } from "./admin/routes.js";
 import { createAdminService } from "./admin/service.js";
+import { bae6Authenticator, firstOf } from "./auth/bae6.js";
 import {
   authenticatorFromEnv,
   endUserVerifierFromEnv,
@@ -34,6 +36,9 @@ import { providerRoutes } from "./providers/routes.js";
 import { createProviderService } from "./providers/service.js";
 import { createApp } from "./server.js";
 import { drain } from "./shutdown.js";
+import { authnPlacements } from "./tenant/authn-placements.js";
+import { tenantRoutes } from "./tenant/routes.js";
+import { createTenantService } from "./tenant/service.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -58,7 +63,7 @@ if (!Number.isInteger(lookupCacheMs) || lookupCacheMs < 0) {
 }
 
 const bindings = createBindingStore(pool);
-const { authenticate, verifyEndUser } =
+const { authenticate: workloadAuthenticate, verifyEndUser } =
   process.env.BAE6_AUTH_MODE === "oidc"
     ? oidcAuthFromEnv(
         process.env,
@@ -68,6 +73,18 @@ const { authenticate, verifyEndUser } =
         authenticate: authenticatorFromEnv(process.env),
         verifyEndUser: endUserVerifierFromEnv(process.env),
       };
+
+const tenantMode = process.env.BAE6_AUTHN_ISSUER !== undefined;
+const authenticate = tenantMode
+  ? firstOf(
+      bae6Authenticator({
+        issuer: required("BAE6_AUTHN_ISSUER"),
+        jwksUri: required("BAE6_AUTHN_JWKS_URI"),
+        audience: process.env.BAE6_AUTHN_AUDIENCE ?? "bae6-authz",
+      }),
+      workloadAuthenticate,
+    )
+  : workloadAuthenticate;
 
 // Fixture principals carry their scopes; an oidc workload's admin scopes come from the bae6-admin store.
 const withAdmin: (p: Principal) => Promise<Principal> =
@@ -166,6 +183,25 @@ const modelsHandler = modelRoutes(
 );
 const bindingsHandler = workloadRoutes(bindings);
 const providersHandler = providerRoutes(createProviderService({ pool }));
+const tenantHandler = tenantMode
+  ? (() => {
+      const client = new OpenFgaClient({
+        apiUrl: required("OPENFGA_API_URL"),
+        storeId: required("BAE6_TENANT_STORE_ID"),
+        authorizationModelId: required("BAE6_TENANT_MODEL_ID"),
+      });
+      const placements = authnPlacements({
+        baseUrl: required("BAE6_AUTHN_URL"),
+        secret: readFileSync(
+          required("BAE6_AUTHN_PLACEMENT_SECRET_FILE"),
+          "utf8",
+        ).trim(),
+      });
+      return tenantRoutes((organization) =>
+        createTenantService({ pool, client, organization, placements }),
+      );
+    })()
+  : undefined;
 const readyTimeoutMs = Number(process.env.BAE6_READY_TIMEOUT_MS ?? 1000);
 if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 1) {
   throw new Error("BAE6_READY_TIMEOUT_MS must be a positive integer");
@@ -187,6 +223,8 @@ const server = createApp({
   routes: async (req, res, principal, url) => {
     // Checks first and with the caller as authenticated: the check path never waits on the admin store.
     if (await checks(req, res, principal, url)) return true;
+    if (tenantHandler && (await tenantHandler(req, res, principal, url)))
+      return true;
     // Unknown paths fall through to a 404 without asking the admin store.
     if (!ADMIN_PATH.test(url.pathname)) return false;
     const admin = await withAdmin(principal);

@@ -260,6 +260,22 @@ export class Authz {
     };
   }
 
+  /** Places a principal in an org unit of the caller's tenant; the credential must be a bae6 token for authz. */
+  async placePrincipal(input: {
+    principalId: string;
+    principalType: "user" | "service" | "agent" | "application";
+    unit: string;
+  }): Promise<void> {
+    const { principalId, ...body } = input;
+    const parsed = await this.#http.json(
+      "PUT",
+      `/v1/tenant/principals/${encodeURIComponent(principalId)}/unit`,
+      { body },
+    );
+    if (!isObject(parsed) || parsed.unit !== input.unit)
+      throw invalidResponse();
+  }
+
   async #post(
     path: string,
     endUserToken: string,

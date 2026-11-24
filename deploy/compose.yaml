@@ -84,11 +84,15 @@ services:
         write("token-client-console", () => crypto.randomBytes(32).toString("base64url"));
         fs.copyFileSync("/keys/token-client-console", "/console/authn-client-secret");
         fs.chownSync("/console/authn-client-secret", 1000, 1000);
+        write("token-client-placement", () => crypto.randomBytes(32).toString("base64url"));
+        fs.copyFileSync("/keys/token-client-placement", "/authz/authn-placement-secret");
+        fs.chownSync("/authz/authn-placement-secret", 1000, 1000);
         fs.writeFileSync("/secrets/mock-idp-authn-client", "dev-only-authn-client", { mode: 0o600 });
         fs.chownSync("/secrets/mock-idp-authn-client", 1000, 1000);
     volumes:
       - authn-keys:/keys
       - console-authn:/console
+      - authz-authn:/authz
       - authn-secrets:/secrets
 
   authn-seed:
@@ -181,6 +185,7 @@ services:
     volumes:
       - ./compose/authz/auth.json:/etc/authz/auth.json:ro
       - ./compose/authz/end-users.json:/etc/authz/end-users.json:ro
+      - authz-authn:/run/secrets/authn:ro
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -510,5 +515,6 @@ volumes:
   pgdata:
   tokens:
   authn-keys:
+  authz-authn:
   authn-secrets:
   console-authn:
