@@ -1,0 +1,189 @@
+model
+  schema 1.1
+
+type user
+
+type service
+
+type agent
+  relations
+    define application: [application]
+
+type group
+  relations
+    define member: [user, service, group#member]
+
+type org_unit
+  relations
+    define parent: [org_unit]
+    define is_root: [user:*, service:*, agent:*, application:*]
+
+    define access_admin_grant: [user, group#member, service]
+    define access_admin: access_admin_grant or access_admin from parent
+    define access_admin_ceiling: [user:*, service:*]
+    define can_grant_access_admin: access_admin and access_admin_ceiling
+    define can_set_access_admin_ceiling: can_grant_access_admin from parent
+
+    define settings_admin_grant: [user, group#member, service]
+    define settings_admin: settings_admin_grant or settings_admin from parent
+    define settings_admin_ceiling: [user:*, service:*]
+    define can_grant_settings_admin: settings_admin and settings_admin_ceiling
+    define can_set_settings_admin_ceiling: can_grant_settings_admin from parent
+
+    define app_admin_grant: [user, group#member, service]
+    define app_admin: app_admin_grant or app_admin from parent
+    define app_admin_ceiling: [user:*, service:*]
+    define can_grant_app_admin: app_admin and app_admin_ceiling
+    define can_set_app_admin_ceiling: can_grant_app_admin from parent
+
+    define budget_admin_grant: [user, group#member, service]
+    define budget_admin: budget_admin_grant or budget_admin from parent
+    define budget_admin_ceiling: [user:*, service:*]
+    define can_grant_budget_admin: budget_admin and budget_admin_ceiling
+    define can_set_budget_admin_ceiling: can_grant_budget_admin from parent
+
+    define security_admin_grant: [user, group#member, service]
+    define security_admin: security_admin_grant or security_admin from parent
+    define security_admin_ceiling: [user:*, service:*]
+    define can_grant_security_admin: security_admin and security_admin_ceiling
+    define can_set_security_admin_ceiling: can_grant_security_admin from parent
+    define can_set_guardrails: security_admin
+    define can_read_audit: security_admin
+
+    define application_use_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define application_use_allowed: application_use_allowlist and (is_root or application_use_allowed from parent)
+    define application_use_blocklist: [user, group#member, service, agent, application]
+    define application_use_denied: application_use_blocklist or application_use_denied from parent
+
+    define api_call_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define api_call_allowed: api_call_allowlist and (is_root or api_call_allowed from parent)
+    define api_call_blocklist: [user, group#member, service, agent, application]
+    define api_call_denied: api_call_blocklist or api_call_denied from parent
+
+    define model_invoke_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define model_invoke_allowed: model_invoke_allowlist and (is_root or model_invoke_allowed from parent)
+    define model_invoke_blocklist: [user, group#member, service, agent, application]
+    define model_invoke_denied: model_invoke_blocklist or model_invoke_denied from parent
+
+    define agent_run_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define agent_run_allowed: agent_run_allowlist and (is_root or agent_run_allowed from parent)
+    define agent_run_blocklist: [user, group#member, service, agent, application]
+    define agent_run_denied: agent_run_blocklist or agent_run_denied from parent
+
+    define prompt_use_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define prompt_use_allowed: prompt_use_allowlist and (is_root or prompt_use_allowed from parent)
+    define prompt_use_blocklist: [user, group#member, service, agent, application]
+    define prompt_use_denied: prompt_use_blocklist or prompt_use_denied from parent
+
+    define mcp_server_use_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define mcp_server_use_allowed: mcp_server_use_allowlist and (is_root or mcp_server_use_allowed from parent)
+    define mcp_server_use_blocklist: [user, group#member, service, agent, application]
+    define mcp_server_use_denied: mcp_server_use_blocklist or mcp_server_use_denied from parent
+
+    define tool_invoke_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define tool_invoke_allowed: tool_invoke_allowlist and (is_root or tool_invoke_allowed from parent)
+    define tool_invoke_blocklist: [user, group#member, service, agent, application]
+    define tool_invoke_denied: tool_invoke_blocklist or tool_invoke_denied from parent
+
+    define dataset_query_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define dataset_query_allowed: dataset_query_allowlist and (is_root or dataset_query_allowed from parent)
+    define dataset_query_blocklist: [user, group#member, service, agent, application]
+    define dataset_query_denied: dataset_query_blocklist or dataset_query_denied from parent
+
+    define document_read_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define document_read_allowed: document_read_allowlist and (is_root or document_read_allowed from parent)
+    define document_read_blocklist: [user, group#member, service, agent, application]
+    define document_read_denied: document_read_blocklist or document_read_denied from parent
+
+    define service_call_allowlist: [user, user:*, group#member, service, service:*, agent, agent:*, application, application:*]
+    define service_call_allowed: service_call_allowlist and (is_root or service_call_allowed from parent)
+    define service_call_blocklist: [user, group#member, service, agent, application]
+    define service_call_denied: service_call_blocklist or service_call_denied from parent
+
+type application
+  relations
+    define unit: [org_unit]
+    define user: [user, group#member, service, agent, application]
+    define can_use: (user and application_use_allowed from unit) but not application_use_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type api
+  relations
+    define unit: [org_unit]
+    define application: [application]
+    define caller: [user, group#member, service, agent, application]
+    define can_call: (caller and api_call_allowed from unit) but not api_call_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type model
+  relations
+    define unit: [org_unit]
+    define application: [application]
+    define invoker: [user, group#member, service, agent, application]
+    define can_invoke: (invoker and model_invoke_allowed from unit) but not model_invoke_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type agent_definition
+  relations
+    define unit: [org_unit]
+    define application: [application]
+    define runner: [user, group#member, service, agent, application]
+    define can_run: (runner and agent_run_allowed from unit) but not agent_run_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type prompt
+  relations
+    define unit: [org_unit]
+    define application: [application]
+    define user: [user, group#member, service, agent, application]
+    define can_use: (user and prompt_use_allowed from unit) but not prompt_use_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type mcp_server
+  relations
+    define unit: [org_unit]
+    define application: [application]
+    define user: [user, group#member, service, agent, application]
+    define can_use: (user and mcp_server_use_allowed from unit) but not mcp_server_use_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type tool
+  relations
+    define unit: [org_unit]
+    define mcp_server: [mcp_server]
+    define invoker: [user, group#member, service, agent, application]
+    define can_invoke: (invoker and tool_invoke_allowed from unit) but not tool_invoke_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type dataset
+  relations
+    define unit: [org_unit]
+    define application: [application]
+    define querier: [user, group#member, service, agent, application]
+    define can_query: (querier and dataset_query_allowed from unit) but not dataset_query_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type document
+  relations
+    define unit: [org_unit]
+    define dataset: [dataset]
+    define reader: [user, group#member, service, agent, application]
+    define can_read: (reader and document_read_allowed from unit) but not document_read_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit
+
+type service_resource
+  relations
+    define unit: [org_unit]
+    define caller: [user, group#member, service, agent, application]
+    define can_call: (caller and service_call_allowed from unit) but not service_call_denied from unit
+    define can_manage: app_admin from unit
+    define can_grant: access_admin from unit

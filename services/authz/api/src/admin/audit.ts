@@ -9,6 +9,7 @@ export interface AuditEvent {
   requestId?: string | undefined;
   /** Before/after summary. Never tokens or protected data. */
   detail?: Record<string, unknown>;
+  outcome?: "success" | "denied" | "error";
 }
 
 export interface AuditRecord {
@@ -32,8 +33,8 @@ export async function recordAudit(
 ): Promise<string> {
   const { rows } = await db.query(
     `INSERT INTO audit_events
-       (actor, organization_id, action, application_id, outcome, request_id, detail)
-     VALUES ($1, $2, $3, $4, 'success', $5, $6)
+       (actor, organization_id, action, application_id, outcome, request_id, detail, time)
+     VALUES ($1, $2, $3, $4, $7, $5, $6, clock_timestamp())
      RETURNING id`,
     [
       e.actor,
@@ -42,6 +43,7 @@ export async function recordAudit(
       e.applicationId ?? null,
       e.requestId ?? null,
       e.detail ?? {},
+      e.outcome ?? "success",
     ],
   );
   return String(rows[0].id);
@@ -74,7 +76,13 @@ export async function listAudit(
   const before = page.cursor
     ? Buffer.from(page.cursor, "base64url").toString()
     : null;
-  if (before !== null && !/^\d{1,18}$/.test(before)) throw new InvalidCursor();
+  if (
+    before !== null &&
+    (!/^\d{1,18}$/.test(before) ||
+      Buffer.from(before).toString("base64url") !== page.cursor)
+  ) {
+    throw new InvalidCursor();
+  }
 
   const { rows } = await pool.query(
     `SELECT id, time, actor, action, application_id, outcome, request_id, detail
