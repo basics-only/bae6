@@ -58,7 +58,6 @@ function fga<T>(
   }, onInvalid);
 }
 
-/** The client must come from here: its requests abort at the timeout instead of landing after the lock is released. */
 export const tenantClient = (config: {
   apiUrl: string;
   storeId: string;
@@ -152,11 +151,6 @@ const defaultAllowlists = (unit: string): Tuple[] =>
     })),
   );
 
-/**
- * The only writer of a tenant store. The model can't forbid a second `parent`, `is_root`
- * on a child, or a second `unit`, so no operation here can produce them: structure is
- * written only by bootstrap, createUnit and placeResource, each under a per-tenant lock.
- */
 export function createTenantService(deps: {
   pool: pg.Pool;
   client: OpenFgaClient;
@@ -203,20 +197,28 @@ export function createTenantService(deps: {
     return page.tuples;
   };
 
-  const write = (writes: Tuple[]) =>
-    fga(
+  const dispatchable = () => {
+    if ((deadline.getStore() ?? Infinity) <= Date.now()) throw unavailable();
+  };
+
+  const write = (writes: Tuple[]) => {
+    dispatchable();
+    return fga(
       () => client.write({ writes }),
       (m) => (/already exist/i.test(m) ? conflict(m) : invalid(m)),
     ).catch(markAmbiguous);
+  };
 
-  const remove = (deletes: Tuple[]) =>
-    fga(
+  const remove = (deletes: Tuple[]) => {
+    dispatchable();
+    return fga(
       () => client.write({ deletes }),
       (m) =>
         /does not exist/i.test(m)
           ? new HttpError(404, "not_found", "Tuple not found.")
           : invalid(m),
     ).catch(markAmbiguous);
+  };
 
   async function depthOf(unit: string): Promise<number> {
     let depth = 1;
@@ -257,7 +259,10 @@ export function createTenantService(deps: {
       ]);
       const id = await recordAudit(db, event);
       await deadline.run(Date.now() + TRANSACTION_BUDGET_MS, run);
-      await db.query("COMMIT");
+      await db.query("COMMIT").catch((err) => {
+        if (err instanceof Error) ambiguous.add(err);
+        throw err;
+      });
       return id;
     } catch (err) {
       await db.query("ROLLBACK").catch(() => {
@@ -276,12 +281,7 @@ export function createTenantService(deps: {
     }
   }
 
-  /**
-   * Audit row and mutation commit together. Denials and ambiguous OpenFGA failures are
-   * audited afterwards, once the connection is back in the pool.
-   * shortcut: a COMMIT that fails after OpenFGA accepted leaves an unaudited change, and
-   * upgrade to an outbox.
-   */
+  // shortcut: a COMMIT that fails after OpenFGA accepted leaves an unaudited change, upgrade to an outbox.
   async function audited(
     actor: string,
     action: string,
@@ -294,31 +294,27 @@ export function createTenantService(deps: {
     try {
       return await transact(event, run);
     } catch (err) {
-      const outcome =
-        err instanceof HttpError && err.status === 403
-          ? "denied"
-          : err instanceof HttpError && err.code === "busy"
-            ? null
-            : "error";
-      if (outcome) {
-        await boundedAudit(pool, {
-          ...event,
-          outcome,
-          detail:
-            err instanceof Error && ambiguous.has(err)
-              ? { ...detail, applied: "unknown" }
-              : detail,
-        }).catch(() => {
-          throw new HttpError(
-            503,
-            "audit_unavailable",
-            "The audit store is unavailable.",
-          );
-        });
-      }
+      await boundedAudit(pool, {
+        ...event,
+        outcome:
+          err instanceof HttpError && err.status === 403 ? "denied" : "error",
+        detail:
+          err instanceof Error && ambiguous.has(err)
+            ? { ...detail, applied: "unknown" }
+            : detail,
+      }).catch(() => {
+        throw new HttpError(
+          503,
+          "audit_unavailable",
+          "The audit store is unavailable.",
+        );
+      });
       throw err;
     }
   }
+
+  const isRoot = async (node: string) =>
+    (await read({ object: node, relation: "is_root" })).length > 0;
 
   const unitOf = (unit: string) => {
     if (!UNIT.test(unit)) throw invalid("Invalid unit id.");
@@ -350,13 +346,22 @@ export function createTenantService(deps: {
       requestId,
       async () => {
         await requireRelation(actor, `can_grant_${capability}_admin`, node);
+        if (!enable && (await isRoot(node))) {
+          const others = (
+            await read({ object: node, relation: tuple.relation })
+          ).filter((t) => t.key.user !== subject);
+          if (others.length === 0) {
+            throw conflict(
+              "The root must keep an administrator for each capability.",
+            );
+          }
+        }
         await (enable ? write([tuple]) : remove([tuple]));
       },
     );
   }
 
   return {
-    /** Platform operator only: the caller of this must be authorised outside the tenant. */
     async bootstrap(
       operator: string,
       root: string,
@@ -428,6 +433,17 @@ export function createTenantService(deps: {
             ...(await read({ object: node, relation: "is_root" })),
           ];
           if (existing.length > 0) throw conflict("The unit already exists.");
+          if (
+            !(await isRoot(parentNode)) &&
+            (await read({ object: parentNode, relation: "parent" })).length ===
+              0
+          ) {
+            throw new HttpError(
+              404,
+              "not_found",
+              "The parent unit does not exist.",
+            );
+          }
           if ((await depthOf(parent)) + 1 > maxDepth) {
             throw invalid(
               `The tree would exceed the depth cap of ${maxDepth}.`,
@@ -457,10 +473,6 @@ export function createTenantService(deps: {
       requestId?: string,
     ) => adminGrant(actor, capability, subject, unit, false, requestId),
 
-    /**
-     * Clearing a ceiling leaves descendants' ceilings in place: they stay in the audit
-     * trail and only take effect while an ancestor still holds the capability.
-     */
     async setCeiling(
       actor: string,
       capability: Capability,
@@ -486,7 +498,26 @@ export function createTenantService(deps: {
             `can_set_${capability}_admin_ceiling`,
             node,
           );
-          await (enable ? write(tuples) : remove(tuples));
+          const present = (
+            await read({
+              object: node,
+              relation: `${capability}_admin_ceiling`,
+            })
+          ).map((t) => t.key as Tuple);
+          if (enable) {
+            const missing = tuples.filter(
+              (t) => !present.some((p) => p.user === t.user),
+            );
+            if (missing.length === 0) {
+              throw conflict("The ceiling is already set.");
+            }
+            return void (await write(missing));
+          }
+          if (await isRoot(node))
+            throw conflict("The root ceiling must remain.");
+          if (present.length === 0)
+            throw new HttpError(404, "not_found", "Tuple not found.");
+          await remove(present);
         },
       );
     },

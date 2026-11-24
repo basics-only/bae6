@@ -7,6 +7,7 @@ import { ConsistencyPreference, OpenFgaClient } from "@openfga/sdk";
 import { transformer } from "@openfga/syntax-transformer";
 import pg from "pg";
 import { listAudit } from "../admin/audit.js";
+import { InvalidCursor } from "../admin/service.js";
 import { migrate } from "../db/migrate.js";
 import { HttpError } from "../http.js";
 import {
@@ -564,6 +565,117 @@ test(
       const row = items.find((e) => e.outcome === "error");
       assert.ok(row);
       assert.equal(row.detail.applied, undefined);
+    });
+  },
+);
+
+test(
+  "the root keeps its last administrator and nobody can clear its ceiling",
+  opts,
+  async () => {
+    await withTenant(async ({ svc }) => {
+      await assert.rejects(
+        svc.revoke(ROOTADM, "access", ROOTADM, "acme"),
+        status(409),
+      );
+      await svc.grant(ROOTADM, "access", FIN, "acme");
+      await svc.revoke(ROOTADM, "access", ROOTADM, "acme");
+      await assert.rejects(
+        svc.setCeiling(FIN, "access", "acme", false),
+        status(403),
+      );
+    });
+  },
+);
+
+test(
+  "a ceiling with only one of its tuples can still be cleared",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await client.write({
+        writes: [
+          {
+            user: "user:*",
+            relation: "budget_admin_ceiling",
+            object: "org_unit:finance",
+          },
+        ],
+      });
+      await svc.setCeiling(ROOTADM, "budget", "finance", false);
+      await assert.rejects(
+        svc.setCeiling(ROOTADM, "budget", "finance", false),
+        status(404),
+      );
+    });
+  },
+);
+
+test(
+  "a change rejected for the tenant lock is audited as an error",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, pool }) => {
+      const holder = await pool.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended('tenant:acme', 0))",
+        );
+        await assert.rejects(
+          svc.createUnit(ROOTADM, "finance", "acme"),
+          status(503),
+        );
+      } finally {
+        await holder.query("ROLLBACK");
+        holder.release();
+      }
+      const { items } = await listAudit(pool, "acme", ["*"], { limit: 50 });
+      assert.ok(items.some((e) => e.outcome === "error"));
+    });
+  },
+);
+
+test("an audit cursor with extra characters is rejected", opts, async () => {
+  await withTenant(async ({ pool }) => {
+    const cursor = `${Buffer.from("123").toString("base64url")}!!`;
+    await assert.rejects(
+      listAudit(pool, "acme", ["*"], { limit: 5, cursor }),
+      InvalidCursor,
+    );
+  });
+});
+
+test("a half-set ceiling can be completed", opts, async () => {
+  await withTenant(async ({ svc, client }) => {
+    await svc.createUnit(ROOTADM, "finance", "acme");
+    await client.write({
+      writes: [
+        {
+          user: "user:*",
+          relation: "budget_admin_ceiling",
+          object: "org_unit:finance",
+        },
+      ],
+    });
+    await svc.setCeiling(ROOTADM, "budget", "finance", true);
+    await assert.rejects(
+      svc.setCeiling(ROOTADM, "budget", "finance", true),
+      status(409),
+    );
+  });
+});
+
+test(
+  "a unit cannot be created under a parent that does not exist",
+  opts,
+  async () => {
+    await withTenant(async ({ svc }) => {
+      await assert.rejects(
+        svc.createUnit(ROOTADM, "finance", "ghost"),
+        (e: unknown) => e instanceof HttpError && e.status >= 400,
+      );
     });
   },
 );
