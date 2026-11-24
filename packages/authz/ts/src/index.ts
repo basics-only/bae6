@@ -358,6 +358,15 @@ export class Authz {
     return context as unknown as ExecutionContext;
   }
 
+  async require(input: {
+    resourceType: string;
+    resourceId: string;
+  }): Promise<ExecutionContext> {
+    const context = await this.tenantCheckWithContext(input);
+    if (!context) throw new AuthzAuthError(403, "forbidden", "Not permitted.");
+    return context;
+  }
+
   async #post(
     path: string,
     endUserToken: string,

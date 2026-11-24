@@ -86,8 +86,10 @@ export function tenantGuard(options: {
         credentials: accessToken,
       });
       if (options.includeExecutionContext) {
-        const executionContext = await authz.tenantCheckWithContext(resource);
-        if (executionContext) return { allowed: true, executionContext };
+        return {
+          allowed: true,
+          executionContext: await authz.require(resource),
+        };
       } else if (await authz.tenantCheck(resource)) {
         return { allowed: true };
       }

@@ -405,6 +405,14 @@ class Authz:
             **optional,
         )
 
+    async def require(self, *, resource_type: str, resource_id: str) -> ExecutionContext:
+        context = await self.tenant_check_with_context(
+            resource_type=resource_type, resource_id=resource_id
+        )
+        if context is None:
+            raise AuthzAuthError(403, "forbidden", "Not permitted.")
+        return context
+
     async def _post(
         self, path: str, end_user_token: str, payload: dict[str, object]
     ) -> dict[str, object]:
