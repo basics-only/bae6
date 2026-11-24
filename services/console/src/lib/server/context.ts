@@ -9,7 +9,6 @@ function required(name: string): string {
   return value;
 }
 
-/** Set by authn, which serves `/auth/*` on the console's own host. */
 export const SESSION_COOKIE = "__Host-bae6-session";
 
 export const SERVICES = {
@@ -21,7 +20,6 @@ export const SERVICES = {
 } as const;
 export type Service = keyof typeof SERVICES;
 
-/** The audience authn mints each service's tokens for. */
 export const AUDIENCES: Record<Service, string> = {
   authz: "bae6-authz",
   ai: "bae6-ai",
@@ -30,7 +28,6 @@ export const AUDIENCES: Record<Service, string> = {
   mcp: "mcp-registry",
 };
 
-/** The base URL of a service, or null when this console is not set up for it. */
 export const serviceUrl = (service: Service): string | null =>
   env[SERVICES[service]]?.replace(/\/$/, "") || null;
 
@@ -47,7 +44,6 @@ let client: Authn | undefined;
 export function authn(): Authn {
   client ??= new Authn({
     baseUrl: required("BAE6_AUTHN_URL"),
-    // Read on every call so a rotated secret is picked up without a restart.
     credentials: async () => {
       const path = required("BAE6_AUTHN_CLIENT_SECRET_FILE");
       if ((await stat(path)).size > 8192)

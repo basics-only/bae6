@@ -5,7 +5,6 @@ import {
   Transport,
 } from "@bae6/sdk-core";
 
-/** `credentials` is this client's authn client secret. `timeoutMs` defaults to 5000. */
 export type AuthnOptions = ClientOptions;
 
 const SUBJECT_TYPES = {
@@ -40,10 +39,8 @@ export class AuthnApiError extends AuthnError {
   }
 }
 
-/** 401 or 403: a bad client secret or bearer token. */
 export class AuthnAuthError extends AuthnApiError {}
 
-/** 400: authn refused the request or its subject token. */
 export class AuthnValidationError extends AuthnApiError {}
 
 export class AuthnTransportError extends AuthnError {}
@@ -114,7 +111,6 @@ export class Authn {
     });
   }
 
-  /** RFC 8693 exchange of a session cookie value or a bae6 token for a token for `audience`. */
   async exchangeToken(input: {
     subjectToken: string;
     subjectTokenType: keyof typeof SUBJECT_TYPES;
@@ -146,7 +142,6 @@ export class Authn {
     };
   }
 
-  /** The principal behind `token`, a bae6 token issued to `bae6-authn`. */
   async me(token: string): Promise<Me> {
     if (token === "") throw new TypeError("token must not be empty");
     const body = await this.#http.json("GET", "/auth/me", {
@@ -168,7 +163,6 @@ export class Authn {
     };
   }
 
-  /** Moves a principal to `orgPath`; needs the placement client secret. */
   async placePrincipal(input: {
     tenantId: string;
     principalId: string;

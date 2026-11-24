@@ -12,7 +12,6 @@ export const TOKEN_TTL_SECONDS = 300;
 export const CLOCK_SKEW_SECONDS = 60;
 export const JWKS_MAX_AGE_SECONDS = 300;
 export const MAX_PUBLISHED_KEYS = 10;
-// Twice the promotion delay, so replicas mid-rollout promote a new key before older ones drop it.
 const ABANDONED_NEXT_SECONDS = 2 * (JWKS_MAX_AGE_SECONDS + CLOCK_SKEW_SECONDS);
 
 export type SigningAlg = "ES256" | "EdDSA";
@@ -130,7 +129,6 @@ export async function revokeKey(db: Pool, kid: string): Promise<void> {
   let broken: Error | undefined;
   try {
     await client.query("BEGIN");
-    // Lock the next row before the target, as promoteNextKey does, so the two cannot deadlock.
     const next = await client.query<{ kid: string; aged: boolean }>(
       `SELECT kid, created_at <= now() - make_interval(secs => $1) AS aged
          FROM signing_keys WHERE status = 'next' FOR UPDATE`,
