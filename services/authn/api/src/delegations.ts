@@ -71,6 +71,8 @@ function validate(limits: DelegationLimits, d: NewDelegation) {
     !Number.isInteger(limits.maxDepth) ||
     limits.maxDepth < 1 ||
     limits.maxDepth > MAX_DEPTH ||
+    !(limits.maxLifetimeSeconds > 0) ||
+    !Number.isFinite(limits.maxLifetimeSeconds) ||
     !SLUG.test(d.tenantId) ||
     !PRINCIPAL_ID.test(d.initiatingPrincipalId) ||
     !PRINCIPAL_ID.test(d.actorPrincipalId) ||

@@ -118,6 +118,11 @@ test(
       createDelegation(db, { ...limits, maxDepth: 9 }, input()),
       "invalid_request",
     );
+    for (const maxLifetimeSeconds of [Number.NaN, -1, 0, Infinity])
+      await refused(
+        createDelegation(db, { ...limits, maxLifetimeSeconds }, input()),
+        "invalid_request",
+      );
   },
 );
 
