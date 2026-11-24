@@ -6,6 +6,9 @@ import type { TenantService } from "./service.js";
 
 const PLACEMENT = /^\/v1\/tenant\/principals\/(prn_[0-9a-f]{32})\/unit$/;
 const CHECK = "/v1/tenant/check";
+const EXT_AUTHZ = "/v1/tenant/ext-authz";
+const RESOURCE_HEADER = "bae6-resource";
+const GATEWAY_RESOURCE = /^([a-z_]{1,32}):([^:\s]{1,256})$/;
 const MAX_BODY_BYTES = 1024;
 const PLACEABLE_TYPES = new Set(["user", "service", "agent", "application"]);
 
@@ -30,6 +33,26 @@ export function tenantRoutes(
     principal: Principal,
     url: URL,
   ): Promise<boolean> => {
+    if (
+      url.pathname === EXT_AUTHZ ||
+      url.pathname.startsWith(`${EXT_AUTHZ}/`)
+    ) {
+      if (!principal.scopes.includes(TENANT_SCOPE))
+        throw new HttpError(403, "forbidden", `Missing scope ${TENANT_SCOPE}.`);
+      const header = req.headers[RESOURCE_HEADER];
+      const match =
+        typeof header === "string" ? GATEWAY_RESOURCE.exec(header) : null;
+      if (!match)
+        throw invalidRequest(`${RESOURCE_HEADER} must be <type>:<id>.`);
+      const allowed = await serviceFor(principal.organization).check(
+        principal.subject,
+        match[1] as Parameters<TenantService["check"]>[1],
+        match[2] as string,
+      );
+      if (!allowed) throw new HttpError(403, "forbidden", "Not permitted.");
+      res.writeHead(200).end();
+      return true;
+    }
     const principalId = PLACEMENT.exec(url.pathname)?.[1];
     const isCheck = url.pathname === CHECK;
     if (!principalId && !isCheck) return false;
