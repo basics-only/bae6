@@ -997,6 +997,7 @@ components:
       bearerFormat: JWT
       description: |
         A bae6 token from bae6-authn with audience `bae6-authz`. Its only scope here is `tenant`.
+        A deployment serves one organization; a token whose `tenant_id` differs is `401`.
     bearerAuth:
       type: http
       scheme: bearer

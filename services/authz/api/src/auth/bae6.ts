@@ -17,7 +17,10 @@ export function bae6Authenticator(config: {
   issuer: string;
   jwksUri: string;
   audience: string;
+  organization: string;
 }): Authenticator {
+  if (!ORGANIZATION_ID.test(config.organization))
+    throw new Error("organization is not a valid organization id");
   const keys = createRemoteJWKSet(new URL(config.jwksUri), {
     cooldownDuration: 30_000,
     cacheMaxAge: 600_000,
@@ -46,7 +49,7 @@ export function bae6Authenticator(config: {
         typeof sub !== "string" ||
         !PRINCIPAL_ID.test(sub) ||
         typeof tenant !== "string" ||
-        !ORGANIZATION_ID.test(tenant) ||
+        tenant !== config.organization ||
         typeof type !== "string" ||
         !PRINCIPAL_TYPES.has(type)
       )
