@@ -1,0 +1,5 @@
+prefix_rule(
+    pattern = ["git", "push", "--", "git@github.com:basics-only/bae6.git", "refs/heads/feature/identity-epic-b:refs/heads/feature/identity-epic-b"],
+    decision = "prompt",
+    justification = "Publish the bae6 identity feature branch over SSH.",
+)
