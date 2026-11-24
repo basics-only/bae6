@@ -2,10 +2,11 @@
 name = "authz-example-fastapi"
 version = "0.0.0"
 requires-python = ">=3.12"
-dependencies = ["fastapi==0.162.0", "uvicorn==0.54.0", "bae6-authz"]
+dependencies = ["fastapi==0.162.0", "uvicorn==0.54.0", "bae6-authz", "bae6-authn"]
 
 [tool.uv]
 package = false
 
 [tool.uv.sources]
+bae6-authn = { workspace = true }
 bae6-authz = { workspace = true }

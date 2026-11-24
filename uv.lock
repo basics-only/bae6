@@ -49,6 +49,7 @@ name = "authz-example-fastapi"
 version = "0.0.0"
 source = { virtual = "examples/authz/fastapi" }
 dependencies = [
+    { name = "bae6-authn" },
     { name = "bae6-authz" },
     { name = "fastapi" },
     { name = "uvicorn" },
@@ -56,6 +57,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bae6-authn", editable = "packages/authn/py" },
     { name = "bae6-authz", editable = "packages/authz/py" },
     { name = "fastapi", specifier = "==0.162.0" },
     { name = "uvicorn", specifier = "==0.54.0" },
