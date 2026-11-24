@@ -839,3 +839,59 @@ test(
     });
   },
 );
+
+test(
+  "a check denies by default, allows a granted principal, honours a blocklist and refuses non-principals",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.placeResource(ROOTADM, "model", "llm", "finance");
+      assert.equal(await svc.check(ALICE, "model", "llm"), false);
+      assert.equal(await svc.check(ALICE, "model", "unplaced"), false);
+      await client.write({
+        writes: [{ user: ALICE, relation: "invoker", object: "model:llm" }],
+      });
+      assert.equal(await svc.check(ALICE, "model", "llm"), true);
+      await svc.setGuardrail(
+        ROOTADM,
+        "acme",
+        "model_invoke",
+        "blocklist",
+        ALICE,
+        true,
+      );
+      assert.equal(await svc.check(ALICE, "model", "llm"), false);
+      for (const subject of [
+        `group:${ALICE_ID}#member`,
+        "user:alice",
+        "user:*",
+      ])
+        await assert.rejects(svc.check(subject, "model", "llm"), status(403));
+      await assert.rejects(
+        svc.check(ALICE, "org_unit" as never, "finance"),
+        status(400),
+      );
+      await assert.rejects(svc.check(ALICE, "model", "a b"), status(400));
+    });
+  },
+);
+
+test(
+  "a check reports an unreachable store as 503, never as a denial",
+  opts,
+  async () => {
+    await withTenant(async ({ pool }) => {
+      const svc = createTenantService({
+        pool,
+        organization: "acme",
+        client: tenantClient({
+          apiUrl: "http://127.0.0.1:9",
+          storeId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+          authorizationModelId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        }),
+      });
+      await assert.rejects(svc.check(ALICE, "model", "llm"), status(503));
+    });
+  },
+);

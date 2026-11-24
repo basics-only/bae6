@@ -31,6 +31,12 @@ before(async () => {
           throw new HttpError(404, "not_found", "Unknown unit.");
         return undefined as never;
       },
+      check: async (subject: string, type: string, id: string) => {
+        calls.push([organization, subject, type, id]);
+        if (id === "down")
+          throw new HttpError(503, "authorization_unavailable", "Down.");
+        return id === "yes";
+      },
     })),
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -91,4 +97,52 @@ test("placement refuses callers without the tenant scope, bad requests and unkno
   assert.equal(get.status, 405);
   assert.equal(get.headers.get("allow"), "PUT");
   assert.equal(calls.filter((c) => c[3] !== "gone").length, 0);
+});
+
+const check = (body: unknown) =>
+  fetch(`${base}/v1/tenant/check`, {
+    method: "POST",
+    headers: { authorization: "Bearer x", "content-type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+
+test("a check answers for the token principal in its own tenant and never from the body", async () => {
+  calls = [];
+  who = tenantAdmin;
+  const allowed = await check({
+    resourceType: "model",
+    resourceId: "yes",
+    subject: "user:other",
+  });
+  assert.deepEqual(await allowed.json(), { allowed: true });
+  const denied = await check({ resourceType: "model", resourceId: "no" });
+  assert.deepEqual(await denied.json(), { allowed: false });
+  assert.deepEqual(calls, [
+    ["acme", tenantAdmin.subject, "model", "yes"],
+    ["acme", tenantAdmin.subject, "model", "no"],
+  ]);
+});
+
+test("a check refuses missing scope, bad requests and wrong methods, and reports an outage as 503", async () => {
+  who = workload;
+  assert.equal(
+    (await check({ resourceType: "model", resourceId: "yes" })).status,
+    403,
+  );
+  who = tenantAdmin;
+  for (const body of [
+    { resourceType: "model" },
+    { resourceId: "yes" },
+    "[1]",
+    "{",
+  ])
+    assert.equal((await check(body)).status, 400);
+  const down = await check({ resourceType: "model", resourceId: "down" });
+  assert.equal(down.status, 503);
+  assert.equal((await down.json()).code, "authorization_unavailable");
+  const get = await fetch(`${base}/v1/tenant/check`, {
+    headers: { authorization: "Bearer x" },
+  });
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get("allow"), "POST");
 });
