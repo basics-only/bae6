@@ -9,6 +9,7 @@ export interface AuditEvent {
   requestId?: string | undefined;
   /** Before/after summary. Never tokens or protected data. */
   detail?: Record<string, unknown>;
+  outcome?: "success" | "denied" | "error";
 }
 
 export interface AuditRecord {
@@ -33,7 +34,7 @@ export async function recordAudit(
   const { rows } = await db.query(
     `INSERT INTO audit_events
        (actor, organization_id, action, application_id, outcome, request_id, detail)
-     VALUES ($1, $2, $3, $4, 'success', $5, $6)
+     VALUES ($1, $2, $3, $4, $7, $5, $6)
      RETURNING id`,
     [
       e.actor,
@@ -42,6 +43,7 @@ export async function recordAudit(
       e.applicationId ?? null,
       e.requestId ?? null,
       e.detail ?? {},
+      e.outcome ?? "success",
     ],
   );
   return String(rows[0].id);
