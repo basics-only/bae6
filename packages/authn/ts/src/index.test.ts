@@ -205,3 +205,48 @@ test("me maps 401 and times out", async () => {
     await slow.close();
   }
 });
+
+test("placePrincipal puts the tenant and path as JSON and returns the stored path", async () => {
+  const s = await serve(200, { orgPath: ["acme", "finance"] });
+  try {
+    const path = await s.authn.placePrincipal({
+      tenantId: "acme",
+      principalId: "prn_x",
+      orgPath: ["acme", "finance"],
+    });
+    assert.deepEqual(path, ["acme", "finance"]);
+    const [req] = s.seen;
+    assert.equal(req?.method, "PUT");
+    assert.equal(req?.url, "/admin/principals/prn_x/org-path");
+    assert.equal(req?.headers.authorization, `Bearer ${SECRET}`);
+    assert.deepEqual(JSON.parse(req?.body ?? ""), {
+      tenantId: "acme",
+      orgPath: ["acme", "finance"],
+    });
+  } finally {
+    await s.close();
+  }
+});
+
+test("placePrincipal maps refusals to typed errors", async () => {
+  for (const [status, Err] of [
+    [401, AuthnAuthError],
+    [400, AuthnValidationError],
+    [404, AuthnApiError],
+  ] as const) {
+    const s = await serve(status, { code: "refused" });
+    try {
+      const err = await s.authn
+        .placePrincipal({
+          tenantId: "acme",
+          principalId: "prn_x",
+          orgPath: ["acme"],
+        })
+        .catch((e: unknown) => e);
+      assert.ok(err instanceof Err);
+      assert.equal((err as AuthnApiError).status, status);
+    } finally {
+      await s.close();
+    }
+  }
+});

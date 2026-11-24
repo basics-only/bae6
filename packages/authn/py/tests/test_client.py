@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qsl
@@ -159,3 +160,41 @@ def test_me_maps_401_and_times_out() -> None:
 
     with pytest.raises(AuthnTimeoutError):
         asyncio.run(go())
+
+
+def test_place_principal_puts_json_and_returns_the_stored_path() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"orgPath": ["acme", "finance"]})
+
+    path = _run(
+        handler,
+        lambda authn: authn.place_principal(
+            tenant_id="acme", principal_id="prn_x", org_path=["acme", "finance"]
+        ),
+    )
+    assert path == ["acme", "finance"]
+    (request,) = seen
+    assert request.method == "PUT"
+    assert request.url.path == "/admin/principals/prn_x/org-path"
+    assert request.headers["authorization"] == f"Bearer {SECRET}"
+    assert json.loads(request.content) == {"tenantId": "acme", "orgPath": ["acme", "finance"]}
+
+
+@pytest.mark.parametrize(
+    ("status", "error_type"),
+    [(401, AuthnAuthError), (400, AuthnValidationError), (404, AuthnApiError)],
+)
+def test_place_principal_maps_refusals_to_typed_errors(
+    status: int, error_type: type[AuthnApiError]
+) -> None:
+    with pytest.raises(error_type) as caught:
+        _run(
+            lambda _request: httpx.Response(status, json={"code": "refused"}),
+            lambda authn: authn.place_principal(
+                tenant_id="acme", principal_id="prn_x", org_path=["acme"]
+            ),
+        )
+    assert caught.value.status == status

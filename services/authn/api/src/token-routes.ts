@@ -36,16 +36,25 @@ async function readForm(req: IncomingMessage): Promise<URLSearchParams> {
   return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
 }
 
+export async function clientAuthenticated(
+  clientSecret: TokenRouteDeps["clientSecret"],
+  req: IncomingMessage,
+  clients: readonly string[],
+): Promise<boolean> {
+  const supplied = BEARER.exec(req.headers.authorization ?? "")?.[1];
+  if (!supplied) return false;
+  for (const client of clients) {
+    const expected = await clientSecret(client);
+    if (expected && timingSafeEqual(sha256(supplied), sha256(expected)))
+      return true;
+  }
+  return false;
+}
+
 export function createTokenRoutes(deps: TokenRouteDeps) {
   async function authenticate(req: IncomingMessage, clients: string[]) {
-    const supplied = BEARER.exec(req.headers.authorization ?? "")?.[1];
-    if (!supplied) throw new OAuthError("invalid_client");
-    for (const client of clients) {
-      const expected = await deps.clientSecret(client);
-      if (expected && timingSafeEqual(sha256(supplied), sha256(expected)))
-        return;
-    }
-    throw new OAuthError("invalid_client");
+    if (!(await clientAuthenticated(deps.clientSecret, req, clients)))
+      throw new OAuthError("invalid_client");
   }
 
   async function callerAudience(req: IncomingMessage, subjectToken: string) {
