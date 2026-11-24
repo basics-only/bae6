@@ -32,6 +32,7 @@ before(async () => {
     issuer: ISSUER,
     jwksUri: `http://127.0.0.1:${port}/jwks`,
     audience: "bae6-authz",
+    organization: "acme",
   });
 });
 
@@ -72,7 +73,7 @@ test("a bae6 token becomes a tenant principal named by its type and id", async (
   });
 });
 
-test("tokens that are forged, mistyped, for another audience, delegated or malformed are refused", async () => {
+test("tokens that are forged, mistyped, for another audience or tenant, delegated or malformed are refused", async () => {
   for (const authorization of [
     undefined,
     "Bearer not-a-jwt",
@@ -81,6 +82,7 @@ test("tokens that are forged, mistyped, for another audience, delegated or malfo
     await bearer({}, { aud: "bae6-ai" }),
     await bearer({}, { iss: "https://evil.test" }),
     await bearer({ tenant_id: "Bad Tenant" }),
+    await bearer({ tenant_id: "globex" }),
     await bearer({ principal_type: "root" }),
     await bearer({ tenant_id: undefined }),
     await bearer({ act: { sub: "prn_agent" } }),
@@ -99,4 +101,15 @@ test("the second authenticator is consulted only when the first refuses", async 
   const both = firstOf(authenticate, fallback);
   assert.equal((await both(await bearer()))?.subject, `user:${ALICE}`);
   assert.equal((await both("Bearer x"))?.subject, "other");
+});
+
+test("an invalid configured organization is rejected at startup", () => {
+  assert.throws(() =>
+    bae6Authenticator({
+      issuer: ISSUER,
+      jwksUri: "http://127.0.0.1:1/jwks",
+      audience: "bae6-authz",
+      organization: "Not An Org",
+    }),
+  );
 });

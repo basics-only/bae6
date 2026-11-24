@@ -80,6 +80,7 @@ const authenticate = tenantMode
         issuer: required("BAE6_AUTHN_ISSUER"),
         jwksUri: required("BAE6_AUTHN_JWKS_URI"),
         audience: process.env.BAE6_AUTHN_AUDIENCE ?? "bae6-authz",
+        organization: required("BAE6_TENANT_ORGANIZATION"),
       }),
       workloadAuthenticate,
     )
