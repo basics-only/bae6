@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Authz, AuthzAuthError, type AuthzOptions } from "./index.js";
+import {
+  Authz,
+  AuthzAuthError,
+  type AuthzOptions,
+  type ExecutionContext,
+} from "./index.js";
 
 export interface TenantResource {
   resourceType: string;
@@ -13,7 +18,7 @@ export interface ExchangedToken {
 }
 
 export type Verdict =
-  | { allowed: true }
+  | { allowed: true; executionContext?: ExecutionContext }
   | { allowed: false; status: 401 | 403 | 503; code: string; message: string };
 
 const BEARER = /^Bearer ([\x21-\x7e]{1,4096})$/;
@@ -34,6 +39,7 @@ const deny = (
  */
 export function tenantGuard(options: {
   authz: Omit<AuthzOptions, "credentials">;
+  includeExecutionContext?: boolean;
   exchange(subjectToken: string): Promise<ExchangedToken>;
 }) {
   const exchanged = new Map<string, { accessToken: string; until: number }>();
@@ -75,13 +81,17 @@ export function tenantGuard(options: {
         : deny(503, "unavailable", "Authorization is unavailable.");
     }
     try {
-      const allowed = await new Authz({
+      const authz = new Authz({
         ...options.authz,
         credentials: accessToken,
-      }).tenantCheck(resource);
-      return allowed
-        ? { allowed: true }
-        : deny(403, "forbidden", "Not permitted.");
+      });
+      if (options.includeExecutionContext) {
+        const executionContext = await authz.tenantCheckWithContext(resource);
+        if (executionContext) return { allowed: true, executionContext };
+      } else if (await authz.tenantCheck(resource)) {
+        return { allowed: true };
+      }
+      return deny(403, "forbidden", "Not permitted.");
     } catch (err) {
       return err instanceof AuthzAuthError
         ? deny(403, "forbidden", "Not permitted.")
@@ -89,6 +99,13 @@ export function tenantGuard(options: {
     }
   };
 }
+
+const contextKey = Symbol("bae6ExecutionContext");
+type GuardedRequest = { [contextKey]?: ExecutionContext | undefined };
+
+export const executionContextOf = (
+  request: object,
+): ExecutionContext | undefined => (request as GuardedRequest)[contextKey];
 
 type Guard = ReturnType<typeof tenantGuard>;
 type ResourceOf<Req> = (
@@ -102,13 +119,19 @@ type ResourceOf<Req> = (
 export const nodeMiddleware =
   <Req extends IncomingMessage>(guard: Guard, resourceOf: ResourceOf<Req>) =>
   async (req: Req, res: ServerResponse, next: (err?: unknown) => void) => {
+    const target = req as GuardedRequest;
+    delete target[contextKey];
     let verdict: Verdict;
     try {
       verdict = await guard(req.headers.authorization, await resourceOf(req));
     } catch (err) {
       return next(err);
     }
-    if (verdict.allowed) return next();
+    if (verdict.allowed) {
+      if (verdict.executionContext)
+        target[contextKey] = verdict.executionContext;
+      return next();
+    }
     if (verdict.status === 401) res.setHeader("www-authenticate", "Bearer");
     res.writeHead(verdict.status, { "content-type": "application/json" });
     res.end(JSON.stringify({ code: verdict.code, message: verdict.message }));
@@ -127,11 +150,17 @@ export const fastifyHook =
     resourceOf: ResourceOf<Req>,
   ) =>
   async (request: Req, reply: ReplyLike) => {
+    const target = request as GuardedRequest;
+    delete target[contextKey];
     const verdict = await guard(
       request.headers.authorization,
       await resourceOf(request),
     );
-    if (verdict.allowed) return;
+    if (verdict.allowed) {
+      if (verdict.executionContext)
+        target[contextKey] = verdict.executionContext;
+      return;
+    }
     if (verdict.status === 401) reply.header("www-authenticate", "Bearer");
     return reply
       .code(verdict.status)
