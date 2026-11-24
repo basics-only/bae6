@@ -9,6 +9,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./middleware": {
+      "types": "./dist/middleware.d.ts",
+      "default": "./dist/middleware.js"
+    },
     "./databricks": {
       "types": "./dist/databricks.d.ts",
       "default": "./dist/databricks.js"
