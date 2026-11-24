@@ -349,6 +349,55 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
+  /v1/tenant/check:
+    post:
+      tags: [tenant]
+      operationId: tenantCheck
+      summary: Check the caller's own access to a tenant resource
+      description: |
+        Authenticated with a bae6 token issued to `bae6-authz`. The principal checked is the
+        token's own `type:sub`, in the token's `tenant_id`; nothing in the body names a
+        principal or tenant. `allowed` is true only when the resource's unit allows the
+        action for that principal and no blocklist or denial applies. Unplaced or unknown
+        resources are `false`. Tokens for groups cannot be checked (`403`). An authorization
+        store outage, a timeout (2 s) or a model too complex to resolve is `503`; clients
+        treat every non-200 response as a deny. Reads at higher consistency, so a revocation
+        is seen on the next check.
+      security:
+        - bae6Token: [tenant]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resourceType, resourceId]
+              additionalProperties: false
+              properties:
+                resourceType:
+                  enum: [application, api, model, agent_definition, prompt, mcp_server, dataset, document, tool, service_resource]
+                resourceId:
+                  type: string
+                  pattern: "^[A-Za-z0-9_@.+|-]{1,256}$"
+      responses:
+        "200":
+          description: The decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed]
+                properties:
+                  allowed:
+                    type: boolean
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
   /v1/tenant/principals/{principalId}/unit:
     put:
       tags: [tenant]

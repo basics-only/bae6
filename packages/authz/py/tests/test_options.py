@@ -2,7 +2,8 @@ import asyncio
 import json
 
 import httpx
-from bae6_authz import Authz
+import pytest
+from bae6_authz import Authz, AuthzApiError
 
 
 def test_credentials_function_and_hooks_apply_to_every_request() -> None:
@@ -52,3 +53,36 @@ def test_place_principal_puts_the_unit_for_the_principal() -> None:
             {"principalType": "user", "unit": "finance"},
         )
     ]
+
+
+def test_tenant_check_posts_the_resource_and_raises_instead_of_denying_quietly() -> None:
+    replies = [
+        httpx.Response(200, json={"allowed": True}),
+        httpx.Response(200, json={"allowed": "yes"}),
+        httpx.Response(503, json={"code": "x", "message": "m", "requestId": "r"}),
+    ]
+    seen: list[tuple[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, json.loads(request.content)))
+        return replies.pop(0)
+
+    async def go() -> None:
+        async with Authz(
+            "http://authz.test",
+            lambda: "t",
+            "crm",
+            transport=httpx.MockTransport(handler),
+        ) as authz:
+            assert await authz.tenant_check(resource_type="model", resource_id="llm")
+            with pytest.raises(AuthzApiError):
+                await authz.tenant_check(resource_type="model", resource_id="llm")
+            with pytest.raises(AuthzApiError) as err:
+                await authz.tenant_check(resource_type="model", resource_id="llm")
+            assert err.value.status == 503
+
+    asyncio.run(go())
+    assert seen[0] == (
+        "/v1/tenant/check",
+        {"resourceType": "model", "resourceId": "llm"},
+    )

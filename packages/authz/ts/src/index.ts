@@ -276,6 +276,19 @@ export class Authz {
       throw invalidResponse();
   }
 
+  /** Whether the credential's own principal may use the tenant resource. Anything but a 200 raises; treat it as denied. */
+  async tenantCheck(input: {
+    resourceType: string;
+    resourceId: string;
+  }): Promise<boolean> {
+    const parsed = await this.#http.json("POST", "/v1/tenant/check", {
+      body: input,
+    });
+    if (!isObject(parsed) || typeof parsed.allowed !== "boolean")
+      throw invalidResponse();
+    return parsed.allowed;
+  }
+
   async #post(
     path: string,
     endUserToken: string,

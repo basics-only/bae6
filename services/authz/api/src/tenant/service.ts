@@ -9,6 +9,7 @@ export const MAX_DEPTH = 22;
 const LOCK_TIMEOUT_MS = 5000;
 const OPENFGA_TIMEOUT_MS = 10000;
 const TRANSACTION_BUDGET_MS = 30000;
+const CHECK_BUDGET_MS = 2000;
 const deadline = new AsyncLocalStorage<number>();
 const ambiguous = new WeakSet<Error>();
 const markAmbiguous = (err: unknown): never => {
@@ -100,6 +101,18 @@ export const RESOURCE_TYPES = [
   "tool",
   "service_resource",
 ] as const;
+const CHECK_RELATION: Record<(typeof RESOURCE_TYPES)[number], string> = {
+  application: "can_use",
+  api: "can_call",
+  model: "can_invoke",
+  agent_definition: "can_run",
+  prompt: "can_use",
+  mcp_server: "can_use",
+  dataset: "can_query",
+  document: "can_read",
+  tool: "can_invoke",
+  service_resource: "can_call",
+};
 const PRINCIPAL_TYPES = ["user", "service", "agent", "application"] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -659,6 +672,16 @@ export function createTenantService(deps: {
             );
           }
         },
+      );
+    },
+
+    async check(subject: string, type: ResourceType, id: string) {
+      if (!PLACEABLE.test(subject))
+        throw forbidden("This principal cannot be checked.");
+      oneOf(RESOURCE_TYPES, type, "resource type");
+      if (!RESOURCE_ID.test(id)) throw invalid("Invalid resource id.");
+      return deadline.run(Date.now() + CHECK_BUDGET_MS, () =>
+        holds(subject, CHECK_RELATION[type], `${type}:${id}`),
       );
     },
 

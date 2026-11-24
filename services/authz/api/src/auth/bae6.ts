@@ -41,6 +41,8 @@ export function bae6Authenticator(config: {
       });
       const { sub, tenant_id: tenant, principal_type: type } = payload;
       if (
+        payload.act !== undefined ||
+        payload.delegation_id !== undefined ||
         typeof sub !== "string" ||
         !PRINCIPAL_ID.test(sub) ||
         typeof tenant !== "string" ||

@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { OpenFgaClient } from "@openfga/sdk";
 import { transformer } from "@openfga/syntax-transformer";
 import pg from "pg";
 import { createAdminAuthorizer } from "./admin/authorizer.js";
@@ -38,7 +37,7 @@ import { createApp } from "./server.js";
 import { drain } from "./shutdown.js";
 import { authnPlacements } from "./tenant/authn-placements.js";
 import { tenantRoutes } from "./tenant/routes.js";
-import { createTenantService } from "./tenant/service.js";
+import { createTenantService, tenantClient } from "./tenant/service.js";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -185,7 +184,7 @@ const bindingsHandler = workloadRoutes(bindings);
 const providersHandler = providerRoutes(createProviderService({ pool }));
 const tenantHandler = tenantMode
   ? (() => {
-      const client = new OpenFgaClient({
+      const client = tenantClient({
         apiUrl: required("OPENFGA_API_URL"),
         storeId: required("BAE6_TENANT_STORE_ID"),
         authorizationModelId: required("BAE6_TENANT_MODEL_ID"),
