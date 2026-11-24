@@ -27,11 +27,25 @@ const OPERATOR = "service:platform";
 const ROOTADM = "user:rootadm";
 const FIN = "user:fin";
 
+type Placement = { tenantId: string; principalId: string; orgPath: string[] };
+class FakeAuthn {
+  calls: Placement[] = [];
+  failing = false;
+  refusing: number | undefined;
+  async place(input: Placement) {
+    if (this.refusing)
+      throw Object.assign(new Error("refused"), { status: this.refusing });
+    if (this.failing) throw new Error("authn down");
+    this.calls.push(input);
+  }
+}
+
 async function withTenant(
   fn: (ctx: {
     svc: TenantService;
     client: OpenFgaClient;
     pool: pg.Pool;
+    authn: FakeAuthn;
   }) => Promise<void>,
   maxDepth = 8,
 ) {
@@ -66,14 +80,16 @@ async function withTenant(
       storeId: id,
       authorizationModelId: model.authorization_model_id,
     });
+    const authn = new FakeAuthn();
     const svc = createTenantService({
       pool,
       client,
       organization: "acme",
       maxDepth,
+      placements: authn,
     });
     await svc.bootstrap(OPERATOR, "acme", ROOTADM);
-    await fn({ svc, client, pool });
+    await fn({ svc, client, pool, authn });
   } finally {
     await pool.end();
     await setup.query(`DROP SCHEMA ${schema} CASCADE`);
@@ -115,8 +131,12 @@ test(
   async () => {
     await withTenant(async ({ svc }) => {
       await assert.rejects(
-        svc.bootstrap(OPERATOR, "other", ROOTADM),
+        svc.bootstrap(OPERATOR, "acme", ROOTADM),
         status(409),
+      );
+      await assert.rejects(
+        svc.bootstrap(OPERATOR, "other", ROOTADM),
+        status(400),
       );
     });
   },
@@ -695,6 +715,127 @@ test(
         });
       }
       await svc.revoke(ROOTADM, "access", ROOTADM, "acme");
+    });
+  },
+);
+
+const ALICE_ID = `prn_${"a".repeat(32)}`;
+const ALICE = `user:${ALICE_ID}`;
+
+test(
+  "placing a principal records it in the unit and tells authn its path from the tenant root",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client, authn }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.createUnit(ROOTADM, "payroll", "finance");
+      await svc.placePrincipal(ROOTADM, ALICE, "payroll");
+      assert.equal(
+        await allowed(client, ALICE, "placed", "org_unit:payroll"),
+        true,
+      );
+      assert.deepEqual(authn.calls, [
+        {
+          tenantId: "acme",
+          principalId: ALICE_ID,
+          orgPath: ["acme", "finance", "payroll"],
+        },
+      ]);
+    });
+  },
+);
+
+test(
+  "moving a principal leaves its old unit and needs admin rights over both units",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client, authn }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.createUnit(ROOTADM, "software", "acme");
+      await svc.placePrincipal(ROOTADM, ALICE, "software");
+      await svc.setCeiling(ROOTADM, "access", "finance", true);
+      await svc.grant(ROOTADM, "access", FIN, "finance");
+      await assert.rejects(
+        svc.placePrincipal(FIN, ALICE, "finance"),
+        status(403),
+      );
+      await svc.placePrincipal(ROOTADM, ALICE, "finance");
+      assert.equal(
+        await allowed(client, ALICE, "placed", "org_unit:software"),
+        false,
+      );
+      assert.equal(
+        await allowed(client, ALICE, "placed", "org_unit:finance"),
+        true,
+      );
+      assert.deepEqual(authn.calls.at(-1)?.orgPath, ["acme", "finance"]);
+      assert.equal(authn.calls.length, 2);
+    });
+  },
+);
+
+test(
+  "placement refuses unknown units, non-principal subjects and non-admins without calling authn",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, authn }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await assert.rejects(
+        svc.placePrincipal(ROOTADM, ALICE, "ghost"),
+        status(404),
+      );
+      await assert.rejects(
+        svc.placePrincipal(ROOTADM, "user:alice", "finance"),
+        status(400),
+      );
+      await assert.rejects(
+        svc.placePrincipal(ROOTADM, `group:${ALICE_ID}#member`, "finance"),
+        status(400),
+      );
+      await assert.rejects(
+        svc.placePrincipal(ROOTADM, ALICE, "Finance_1"),
+        status(400),
+      );
+      await assert.rejects(
+        svc.placePrincipal("user:nobody", ALICE, "finance"),
+        status(403),
+      );
+      assert.deepEqual(authn.calls, []);
+    });
+  },
+);
+
+test(
+  "a placement authn did not accept leaves authz unchanged and repeating it finishes the job",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client, authn }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      authn.failing = true;
+      await assert.rejects(
+        svc.placePrincipal(ROOTADM, ALICE, "finance"),
+        status(503),
+      );
+      assert.equal(
+        await allowed(client, ALICE, "placed", "org_unit:finance"),
+        false,
+      );
+      authn.refusing = 409;
+      await assert.rejects(
+        svc.placePrincipal(ROOTADM, ALICE, "finance"),
+        status(409),
+      );
+      assert.equal(
+        await allowed(client, ALICE, "placed", "org_unit:finance"),
+        false,
+      );
+      authn.failing = false;
+      authn.refusing = undefined;
+      await svc.placePrincipal(ROOTADM, ALICE, "finance");
+      assert.deepEqual(
+        authn.calls.map((c) => c.orgPath),
+        [["acme", "finance"]],
+      );
     });
   },
 );
