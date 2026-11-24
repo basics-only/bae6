@@ -895,3 +895,33 @@ test(
     });
   },
 );
+
+test(
+  "a revoked grant and a cleared blocklist are seen by the very next check",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.placeResource(ROOTADM, "model", "llm", "finance");
+      const grant = { user: ALICE, relation: "invoker", object: "model:llm" };
+      for (let round = 0; round < 3; round++) {
+        await client.write({ writes: [grant] });
+        assert.equal(await svc.check(ALICE, "model", "llm"), true);
+        await client.write({ deletes: [grant] });
+        assert.equal(await svc.check(ALICE, "model", "llm"), false);
+      }
+      await client.write({ writes: [grant] });
+      const block = [
+        ROOTADM,
+        "acme",
+        "model_invoke",
+        "blocklist",
+        ALICE,
+      ] as const;
+      await svc.setGuardrail(...block, true);
+      assert.equal(await svc.check(ALICE, "model", "llm"), false);
+      await svc.setGuardrail(...block, false);
+      assert.equal(await svc.check(ALICE, "model", "llm"), true);
+    });
+  },
+);
