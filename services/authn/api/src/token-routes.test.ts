@@ -6,6 +6,7 @@ import type pg from "pg";
 import { migratedTestDatabase } from "./db/test-database.js";
 import { SESSION_TOKEN_TYPE } from "./exchange.js";
 import { localSigner, type Signer, syncKeys } from "./keys.js";
+import { setPrincipalOrgPath } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { createSession, revokeSession } from "./sessions.js";
 import { createTokenRoutes } from "./token-routes.js";
@@ -153,6 +154,37 @@ test(
     assert.equal(claims.principal_type, "user");
     assert.deepEqual(claims.org_path, ["acme", "finance"]);
     assert.match(claims.session_id ?? "", /^ses_/);
+  },
+);
+
+test(
+  "a principal moved to another org unit gets the new org_path on its next session exchange",
+  { skip },
+  async () => {
+    const cookie = await session();
+    const claimsOf = async (res: Response) =>
+      verifyToken(db, (await res.json()).access_token, {
+        issuer: ISSUER,
+        audience: "gateway",
+      });
+    const before = await claimsOf(await fromSession(cookie));
+    const move = (orgPath: string[]) =>
+      setPrincipalOrgPath(db, {
+        tenantId: "acme",
+        principalId: ALICE,
+        orgPath,
+        actor: "authz",
+      });
+    await move(["acme", "legal"]);
+    try {
+      assert.deepEqual(before.org_path, ["acme", "finance"]);
+      assert.deepEqual((await claimsOf(await fromSession(cookie))).org_path, [
+        "acme",
+        "legal",
+      ]);
+    } finally {
+      await move(["acme", "finance"]);
+    }
   },
 );
 
