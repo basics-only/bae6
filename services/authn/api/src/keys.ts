@@ -66,6 +66,56 @@ export function localSigner(privateKeyPem: string): Signer {
   };
 }
 
+export interface KmsClient {
+  publicKey(): Promise<Uint8Array>;
+  sign(message: Uint8Array): Promise<Uint8Array>;
+}
+
+function derToP1363(der: Uint8Array): Uint8Array {
+  const bad = () => new KeyError("KMS returned a malformed ECDSA signature");
+  let at = 0;
+  const byte = () => {
+    const b = der[at++];
+    if (b === undefined) throw bad();
+    return b;
+  };
+  const length = () => {
+    const b = byte();
+    return b < 0x80 ? b : b === 0x81 ? byte() : Number.NaN;
+  };
+  if (byte() !== 0x30 || length() !== der.length - at) throw bad();
+  const out = new Uint8Array(64);
+  for (const offset of [0, 32]) {
+    const len = byte() === 0x02 ? length() : Number.NaN;
+    if (!(len >= 1 && len <= 33) || at + len > der.length) throw bad();
+    const int = der.subarray(at, at + len);
+    at += len;
+    const digits = int[0] === 0 ? int.subarray(1) : int;
+    if (digits.length > 32 || (int[0] ?? 0) > 0x7f) throw bad();
+    out.set(digits, offset + 32 - digits.length);
+  }
+  if (at !== der.length) throw bad();
+  return out;
+}
+
+export async function kmsSigner(client: KmsClient): Promise<Signer> {
+  const publicKey = createPublicKey({
+    key: Buffer.from(await client.publicKey()),
+    format: "der",
+    type: "spki",
+  });
+  if (algFor(publicKey) !== "ES256")
+    throw new KeyError("KMS signing keys must be P-256");
+  const jwk = publicKey.export({ format: "jwk" });
+  const kid = thumbprint(jwk);
+  return {
+    kid,
+    alg: "ES256",
+    publicJwk: { ...jwk, kid, alg: "ES256", use: "sig" },
+    sign: async (input) => derToP1363(await client.sign(input)),
+  };
+}
+
 export async function registerKey(db: Pool, signer: Signer): Promise<void> {
   if ("d" in signer.publicJwk) throw new KeyError("public JWK carries d");
   try {
