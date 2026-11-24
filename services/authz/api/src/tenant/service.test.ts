@@ -233,6 +233,57 @@ test(
 );
 
 test(
+  "resource placement retries a failed projection and repairs unit drift",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client, pool }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.createUnit(ROOTADM, "software", "acme");
+      const object = "model:llm";
+      const intended = { user: "org_unit:finance", relation: "unit", object };
+      const drift = { ...intended, user: "org_unit:software" };
+      const write = client.write.bind(client);
+      client.write = async () => {
+        throw new Error("OpenFGA unavailable");
+      };
+      try {
+        await assert.rejects(
+          svc.placeResource(ROOTADM, "model", "llm", "finance"),
+          status(503),
+        );
+      } finally {
+        client.write = write;
+      }
+
+      const scheduleNow = () =>
+        pool.query(
+          "UPDATE tenant_resource_outbox SET due_at = now() WHERE organization_id = $1 AND resource = $2",
+          ["acme", object],
+        );
+      const readUnits = async () =>
+        (
+          await client.read(
+            { object, relation: "unit" },
+            {
+              consistency: ConsistencyPreference.HigherConsistency,
+            },
+          )
+        ).tuples.map((tuple) => tuple.key.user);
+      assert.deepEqual(await readUnits(), []);
+      await scheduleNow();
+      await svc.reconcileResource();
+      assert.deepEqual(await readUnits(), [intended.user]);
+      await svc.placeResource(ROOTADM, "model", "llm", "finance");
+
+      await client.write({ writes: [drift], deletes: [intended] });
+      await scheduleNow();
+      await svc.reconcileResource();
+      assert.deepEqual(await readUnits(), [intended.user]);
+    });
+  },
+);
+
+test(
   "rejects unknown resource types, capabilities and actions",
   opts,
   async () => {

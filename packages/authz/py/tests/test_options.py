@@ -86,3 +86,29 @@ def test_tenant_check_posts_the_resource_and_raises_instead_of_denying_quietly()
         "/v1/tenant/check",
         {"resourceType": "model", "resourceId": "llm"},
     )
+
+
+
+def test_place_tenant_resource_puts_the_placement_and_returns_its_audit_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PUT"
+        assert request.url.path == "/v1/tenant/resources/unit"
+        assert json.loads(request.content) == {
+            "resourceType": "model",
+            "resourceId": "llm",
+            "unit": "finance",
+        }
+        return httpx.Response(200, json={"auditEventId": "42"})
+
+    async def go() -> None:
+        async with Authz(
+            "http://authz.test", lambda: "t", "crm", transport=httpx.MockTransport(handler)
+        ) as authz:
+            assert (
+                await authz.place_tenant_resource(
+                    resource_type="model", resource_id="llm", unit="finance"
+                )
+                == "42"
+            )
+
+    asyncio.run(go())

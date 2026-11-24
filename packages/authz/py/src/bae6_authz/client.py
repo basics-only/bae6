@@ -302,6 +302,19 @@ class Authz:
         if not isinstance(parsed, dict) or parsed.get("unit") != unit:
             raise _invalid_response()
 
+    async def place_tenant_resource(
+        self, *, resource_type: str, resource_id: str, unit: str
+    ) -> str:
+        parsed = await self._http.json(
+            "PUT",
+            "/v1/tenant/resources/unit",
+            body={"resourceType": resource_type, "resourceId": resource_id, "unit": unit},
+        )
+        event_id = parsed.get("auditEventId") if isinstance(parsed, dict) else None
+        if not isinstance(event_id, str):
+            raise _invalid_response()
+        return event_id
+
     async def tenant_check(self, *, resource_type: str, resource_id: str) -> bool:
         """Whether the credential's own principal may use the tenant resource. Anything but a 200 raises; treat it as denied."""
         parsed = await self._http.json(

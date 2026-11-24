@@ -30,6 +30,7 @@ import {
 } from "./checks/service.js";
 import { migrate } from "./db/migrate.js";
 import { readiness } from "./health.js";
+import { HttpError } from "./http.js";
 import { setupObservability } from "./observability.js";
 import { providerRoutes } from "./providers/routes.js";
 import { createProviderService } from "./providers/service.js";
@@ -73,14 +74,18 @@ const { authenticate: workloadAuthenticate, verifyEndUser } =
         verifyEndUser: endUserVerifierFromEnv(process.env),
       };
 
-const tenantMode = process.env.BAE6_AUTHN_ISSUER !== undefined;
+const tenantOrganization =
+  process.env.BAE6_AUTHN_ISSUER === undefined
+    ? undefined
+    : required("BAE6_TENANT_ORGANIZATION");
+const tenantMode = tenantOrganization !== undefined;
 const authenticate = tenantMode
   ? firstOf(
       bae6Authenticator({
         issuer: required("BAE6_AUTHN_ISSUER"),
         jwksUri: required("BAE6_AUTHN_JWKS_URI"),
         audience: process.env.BAE6_AUTHN_AUDIENCE ?? "bae6-authz",
-        organization: required("BAE6_TENANT_ORGANIZATION"),
+        organization: tenantOrganization,
       }),
       workloadAuthenticate,
     )
@@ -183,7 +188,7 @@ const modelsHandler = modelRoutes(
 );
 const bindingsHandler = workloadRoutes(bindings);
 const providersHandler = providerRoutes(createProviderService({ pool }));
-const tenantHandler = tenantMode
+const tenantService = tenantMode
   ? (() => {
       const client = tenantClient({
         apiUrl: required("OPENFGA_API_URL"),
@@ -197,11 +202,35 @@ const tenantHandler = tenantMode
           "utf8",
         ).trim(),
       });
-      return tenantRoutes((organization) =>
-        createTenantService({ pool, client, organization, placements }),
-      );
+      return createTenantService({
+        pool,
+        client,
+        organization: tenantOrganization,
+        placements,
+      });
     })()
   : undefined;
+const tenantHandler = tenantService
+  ? tenantRoutes((organization) => {
+      if (organization !== tenantOrganization)
+        throw new HttpError(403, "forbidden", "Unknown tenant.");
+      return tenantService;
+    })
+  : undefined;
+let reconcileTimer: NodeJS.Timeout | undefined;
+let stopReconciliation = false;
+if (tenantService) {
+  const reconcile = async () => {
+    await tenantService.reconcileResource().catch(() => {
+      console.error(
+        JSON.stringify({ msg: "tenant resource reconciliation failed" }),
+      );
+    });
+    if (!stopReconciliation)
+      reconcileTimer = setTimeout(reconcile, 1000).unref();
+  };
+  reconcileTimer = setTimeout(reconcile, 1000).unref();
+}
 const readyTimeoutMs = Number(process.env.BAE6_READY_TIMEOUT_MS ?? 1000);
 if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 1) {
   throw new Error("BAE6_READY_TIMEOUT_MS must be a positive integer");
@@ -261,6 +290,8 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, async () => {
     console.log(JSON.stringify({ msg: "authz api draining", signal }));
     draining = true;
+    stopReconciliation = true;
+    clearTimeout(reconcileTimer);
     try {
       await sleep(shutdownDelayMs);
       await drain(server, SHUTDOWN_TOTAL_MS - POOL_CLOSE_MS - shutdownDelayMs);

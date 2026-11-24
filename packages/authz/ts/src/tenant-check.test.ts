@@ -40,3 +40,22 @@ test("tenantCheck posts the resource and raises instead of denying quietly", asy
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
+
+test("placeTenantResource sends the placement and returns its audit ID", async () => {
+  const input = { resourceType: "model", resourceId: "llm", unit: "finance" };
+  const authz = new Authz({
+    baseUrl: "https://authz.example",
+    credentials: "t",
+    application: "crm",
+    fetch: async (url, init) => {
+      assert.equal(
+        String(url),
+        "https://authz.example/v1/tenant/resources/unit",
+      );
+      assert.equal(init?.method, "PUT");
+      assert.deepEqual(JSON.parse(String(init?.body)), input);
+      return Response.json({ ...input, auditEventId: "42" });
+    },
+  });
+  assert.equal(await authz.placeTenantResource(input), "42");
+});
