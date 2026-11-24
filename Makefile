@@ -58,6 +58,8 @@ db-test:
 	done
 
 up:
+	$(COMPOSE) up -d --wait postgres
+	$(COMPOSE) exec -T postgres sh /docker-entrypoint-initdb.d/init.sh
 	$(COMPOSE) config --format json | node e2e/orgs/compose.mjs > $(ORGS_OVERRIDE)
 	$(COMPOSE) -f $(ORGS_OVERRIDE) up --build -d --wait
 

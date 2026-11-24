@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+POSTGRES_USER=${POSTGRES_USER:-postgres}
 
 for entry in \
   "openfga:$OPENFGA_DB_PASSWORD" \
@@ -12,10 +13,13 @@ for entry in \
   "evals:$EVAL_DB_PASSWORD"; do
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" \
     -v name="${entry%%:*}" -v pw="${entry#*:}" <<'SQL'
-CREATE ROLE :"name" LOGIN PASSWORD :'pw';
-CREATE DATABASE :"name" OWNER :"name";
-REVOKE CONNECT ON DATABASE :"name" FROM PUBLIC;
+SELECT format('CREATE ROLE %I LOGIN', :'name')
+ WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'name') \gexec
+SELECT format('ALTER ROLE %I PASSWORD %L', :'name', :'pw') \gexec
+SELECT format('CREATE DATABASE %I OWNER %I', :'name', :'name')
+ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'name') \gexec
+SELECT format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', :'name') \gexec
 SQL
 done
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d embed -c 'CREATE EXTENSION vector'
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d embed -c 'CREATE EXTENSION IF NOT EXISTS vector'

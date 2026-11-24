@@ -420,6 +420,7 @@ test(
         sessionTtlSeconds: 3600,
         issuer: AUTHN_ISSUER,
         allowHttp: true,
+        httpOrigin: true,
       }),
     });
     await new Promise<void>((r) => dev.listen(0, "127.0.0.1", r));
@@ -450,6 +451,42 @@ test(
         },
       });
       assert.equal(out.status, 204);
+    } finally {
+      tenantsByHost.delete(host);
+      dev.closeAllConnections();
+      await new Promise<void>((r) => dev.close(() => r()));
+    }
+  },
+);
+
+test(
+  "allowing http issuers alone keeps the https origin",
+  { skip },
+  async () => {
+    const dev = createAuthnApi({
+      ping: async () => {},
+      requestTimeoutMs: 5000,
+      routes: createBffRoutes({
+        db,
+        provider: async (_connection, redirectUri) => {
+          redirectUris.push(redirectUri);
+          return provider;
+        },
+        tenantsByHost,
+        sessionTtlSeconds: 3600,
+        issuer: AUTHN_ISSUER,
+        allowHttp: true,
+      }),
+    });
+    await new Promise<void>((r) => dev.listen(0, "127.0.0.1", r));
+    const host = `127.0.0.1:${(dev.address() as AddressInfo).port}`;
+    tenantsByHost.set(host, "acme");
+    try {
+      const at = (path: string, init: RequestInit = {}) =>
+        fetch(`http://${host}${path}`, { redirect: "manual", ...init });
+      const begin = await at("/auth/login/ping");
+      assert.equal(begin.status, 302);
+      assert.equal(redirectUris.at(-1), `https://${host}/auth/callback/ping`);
     } finally {
       tenantsByHost.delete(host);
       dev.closeAllConnections();

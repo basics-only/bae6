@@ -55,6 +55,7 @@ export interface BffDeps {
   issuer: string;
   graph?: GraphOptions;
   allowHttp?: boolean;
+  httpOrigin?: boolean;
 }
 
 interface LoginCookie extends PendingLogin {
@@ -147,7 +148,7 @@ export function createBffRoutes(deps: BffDeps) {
     if (!tenantId) throw new HttpError(404, "not_found", "Not found.");
     return {
       tenantId,
-      origin: `${deps.allowHttp ? "http" : "https"}://${host}`,
+      origin: `${deps.httpOrigin ? "http" : "https"}://${host}`,
     };
   }
 
