@@ -107,12 +107,10 @@ class TenantGuard:
         reset = self._current.set(token)
         try:
             if self._include_execution_context:
-                context = await self._authz.tenant_check_with_context(
+                context = await self._authz.require(
                     resource_type=resource.resource_type, resource_id=resource.resource_id
                 )
-                if context is not None:
-                    return Verdict(True, execution_context=context)
-                return _deny(403, "forbidden", "Not permitted.")
+                return Verdict(True, execution_context=context)
             allowed = await self._authz.tenant_check(
                 resource_type=resource.resource_type,
                 resource_id=resource.resource_id,

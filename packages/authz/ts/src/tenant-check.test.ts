@@ -106,6 +106,10 @@ test("tenant middleware exposes verified context only for a successful check", a
   const hook = fastifyHook(guard, () => resource);
   await hook(request, reply);
   assert.deepEqual(executionContextOf(request), context);
+  response = { allowed: false };
+  await hook(request, reply);
+  assert.equal(status, 403);
+  assert.equal(executionContextOf(request), undefined);
   response = { allowed: true };
   await hook(request, reply);
   assert.equal(status, 503);

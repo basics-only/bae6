@@ -195,5 +195,7 @@ def test_fastapi_dependency_returns_context_from_an_allowed_check() -> None:
             "resourceId": "gpt",
             "includeExecutionContext": True,
         }
+        fakes.answer = httpx.Response(200, json={"allowed": False})
+        assert client.get("/", headers=headers).status_code == 403
         fakes.answer = httpx.Response(200, json={"allowed": True})
         assert client.get("/", headers=headers).status_code == 503
