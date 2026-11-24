@@ -8,6 +8,7 @@ import {
   loadConnection,
   PrincipalError,
   resolvePrincipal,
+  setPrincipalOrgPath,
   setPrincipalStatus,
 } from "./principals.js";
 
@@ -517,5 +518,74 @@ test(
       ),
       { code: "23503" },
     );
+  },
+);
+
+test(
+  "placing a principal in an org unit records the move; paths outside the tenant or tree are refused",
+  { skip },
+  async () => {
+    const entra = await connection("acme", "entra");
+    const { principalId } = await resolvePrincipal(
+      db,
+      entra,
+      entraLogin("mover"),
+    );
+    const place = (orgPath: string[], id = principalId) =>
+      setPrincipalOrgPath(db, {
+        tenantId: "acme",
+        principalId: id,
+        orgPath,
+        actor: "authz",
+      });
+    const orgPath = async () =>
+      (
+        await db.query("SELECT org_path FROM principals WHERE id = $1", [
+          principalId,
+        ])
+      ).rows[0].org_path;
+    assert.deepEqual(await orgPath(), ["acme"]);
+    await place(["acme", "finance", "ap"]);
+    await place(["acme", "finance", "ap"]);
+    assert.deepEqual(await orgPath(), ["acme", "finance", "ap"]);
+    const { rows } = await db.query(
+      "SELECT detail FROM principal_events WHERE principal_id = $1 AND type = 'placed'",
+      [principalId],
+    );
+    assert.deepEqual(
+      rows.map((r) => r.detail),
+      [{ from: ["acme"], to: ["acme", "finance", "ap"] }],
+    );
+    for (const bad of [
+      [],
+      ["globex", "finance"],
+      ["finance"],
+      ["acme", "Finance"],
+      ["acme", "a,b"],
+      ["acme", ""],
+      ["acme", ...Array.from({ length: 32 }, (_, i) => `u${i}`)],
+    ])
+      await rejectsWith(place(bad), "invalid_request");
+    await rejectsWith(
+      place(["acme", "x"], `prn_${"0".repeat(32)}`),
+      "unknown_principal",
+    );
+    await rejectsWith(
+      setPrincipalOrgPath(db, {
+        tenantId: "globex",
+        principalId,
+        orgPath: ["globex"],
+        actor: "authz",
+      }),
+      "unknown_principal",
+    );
+    assert.deepEqual(await orgPath(), ["acme", "finance", "ap"]);
+    await setPrincipalStatus(db, {
+      tenantId: "acme",
+      principalId,
+      status: "deprovisioned",
+      actor: "authz",
+    });
+    await rejectsWith(place(["acme", "legal"]), "invalid_transition");
   },
 );

@@ -433,3 +433,54 @@ export async function linkExternalIdentity(
     return identityId;
   });
 }
+
+const ORG_UNIT = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+export async function setPrincipalOrgPath(
+  db: Pool,
+  change: {
+    tenantId: string;
+    principalId: string;
+    orgPath: string[];
+    actor: string;
+  },
+): Promise<void> {
+  checkActor(change.actor);
+  const { orgPath } = change;
+  if (
+    !Array.isArray(orgPath) ||
+    orgPath.length < 1 ||
+    orgPath.length > 32 ||
+    orgPath[0] !== change.tenantId ||
+    !orgPath.every((unit) => typeof unit === "string" && ORG_UNIT.test(unit))
+  )
+    throw new PrincipalError("invalid_request");
+  return inTransaction(db, async (client) => {
+    const { rows } = await client.query<{
+      status: PrincipalStatus;
+      org_path: string[];
+    }>(
+      "SELECT status, org_path FROM principals WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+      [change.tenantId, change.principalId],
+    );
+    const current = rows[0];
+    if (!current) throw new PrincipalError("unknown_principal");
+    if (current.status === "deprovisioned")
+      throw new PrincipalError("invalid_transition");
+    if (current.org_path.join() === orgPath.join()) return;
+    await client.query(
+      "UPDATE principals SET org_path = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2",
+      [change.tenantId, change.principalId, orgPath],
+    );
+    await client.query(
+      `INSERT INTO principal_events (tenant_id, principal_id, type, actor, detail)
+       VALUES ($1, $2, 'placed', $3, $4)`,
+      [
+        change.tenantId,
+        change.principalId,
+        change.actor,
+        { from: current.org_path, to: orgPath },
+      ],
+    );
+  });
+}
