@@ -1,7 +1,7 @@
 import { error, redirect } from "@sveltejs/kit";
 import { ApiError, apiJson, apiMutation } from "./api";
-import { AUDIENCES, authn, type Service, serviceUrl } from "./context";
-import { type Session, tokenFor } from "./session";
+import { AUDIENCES, type Service, serviceToken, serviceUrl } from "./context";
+import type { Session } from "./session";
 
 function baseOf(service: Service): string {
   const url = serviceUrl(service);
@@ -16,11 +16,7 @@ async function bearer(
   service: Service,
 ): Promise<{ accessToken: string }> {
   if (!locals.session) redirect(303, "/login");
-  const token = await tokenFor(
-    authn(),
-    locals.session.cookie,
-    AUDIENCES[service],
-  );
+  const token = await serviceToken(locals.session.cookie, AUDIENCES[service]);
   if (!token) redirect(303, "/login");
   return { accessToken: token };
 }

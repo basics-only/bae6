@@ -4,7 +4,7 @@ import { Authn, AuthnAuthError, AuthnValidationError } from "@bae6/authn";
 import { UnsecuredJWT } from "jose";
 import { type ApiError, apiJson } from "./api.js";
 import { crossSiteMutation, loginRedirect } from "./guard.js";
-import { resolveSession, tokenFor } from "./session.js";
+import { resolveSession, tokenCache, tokenFor } from "./session.js";
 
 const COOKIE = "session-cookie-value";
 
@@ -27,6 +27,7 @@ function fakeAuthn(opts: { live?: boolean; secret?: string } = {}) {
     return reply(200, {
       access_token: new UnsecuredJWT({ aud: form.get("audience") ?? "" })
         .setSubject("prn_anne")
+        .setExpirationTime(Math.floor(Date.now() / 1000) + 300)
         .encode(),
       issued_token_type: "urn:ietf:params:oauth:token-type:jwt",
       token_type: "Bearer",
@@ -79,6 +80,28 @@ test("each service gets a token minted for its own audience", async () => {
   assert.ok(token);
   assert.equal(seen[0]?.get("audience"), "bae6-authz");
   assert.equal(seen[0]?.get("subject_token"), COOKIE);
+});
+
+test("a service token is reused until shortly before it expires, per session and audience", async () => {
+  const { authn, seen } = fakeAuthn();
+  let clock = Date.now();
+  const tokens = tokenCache(authn, () => clock);
+  const first = await tokens(COOKIE, "bae6-authz");
+  assert.equal(await tokens(COOKIE, "bae6-authz"), first);
+  assert.equal(seen.length, 1);
+  await tokens(COOKIE, "bae6-authn");
+  assert.equal(seen.length, 2);
+  clock += 280_000;
+  await tokens(COOKIE, "bae6-authz");
+  assert.equal(seen.length, 3);
+});
+
+test("a session authn no longer honours is not served from the cache", async () => {
+  const { authn, seen } = fakeAuthn({ live: false });
+  const tokens = tokenCache(authn);
+  assert.equal(await tokens(COOKIE, "bae6-authz"), null);
+  assert.equal(await tokens(COOKIE, "bae6-authz"), null);
+  assert.equal(seen.length, 2);
 });
 
 test("only the public pages are reachable without a session", () => {

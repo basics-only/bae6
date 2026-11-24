@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { Authn } from "@bae6/authn";
 import { env } from "$env/dynamic/private";
+import { tokenCache } from "./session";
 
 function required(name: string): string {
   const value = env[name];
@@ -35,6 +36,12 @@ export const serviceUrl = (service: Service): string | null =>
 
 export const configuredServices = () =>
   (Object.keys(SERVICES) as Service[]).filter((s) => serviceUrl(s));
+
+let serviceTokens: ReturnType<typeof tokenCache> | undefined;
+export function serviceToken(cookie: string, audience: string) {
+  serviceTokens ??= tokenCache(authn());
+  return serviceTokens(cookie, audience);
+}
 
 let client: Authn | undefined;
 export function authn(): Authn {
