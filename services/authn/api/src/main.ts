@@ -51,7 +51,6 @@ if (httpOrigin)
 const port = int("PORT", 8080, 1, 65535);
 const poolMax = int("BAE6_AUTHN_DB_POOL_MAX", 10, 1, 100);
 const shutdownDelayMs = int("BAE6_SHUTDOWN_DELAY_MS", 0, 0, 15_000);
-// Capped so delay + drain + 5 s stays under the 60 s termination grace period.
 const requestTimeoutMs = int("BAE6_REQUEST_TIMEOUT_MS", 30_000, 1000, 30_000);
 const databaseUrl = required("BAE6_AUTHN_DATABASE_URL");
 const secretsDir = required("BAE6_AUTHN_SECRETS_DIR");
@@ -164,7 +163,6 @@ async function clientSecret(client: string): Promise<string | undefined> {
   return secret;
 }
 
-// Waiting on another replica's migration lock or building an index can exceed the request timeout.
 const migrator = new pg.Client({
   connectionString: databaseUrl,
   connectionTimeoutMillis: 5000,

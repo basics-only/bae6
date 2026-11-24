@@ -10,10 +10,6 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Calls a service API with the logged-in user's token for it. The console never talks to OpenFGA or
- * Postgres; every decision, including "may this user see this", is the API's.
- */
 export async function apiJson<T>(
   apiUrl: string,
   session: Session,
@@ -22,7 +18,6 @@ export async function apiJson<T>(
   fetchImpl: typeof fetch = fetch,
 ): Promise<T> {
   const res = await fetchImpl(`${apiUrl}${path}`, {
-    // A hung API must fail the page, not hold it open.
     signal: AbortSignal.timeout(10_000),
     method: init.method ?? "GET",
     headers: {
@@ -48,10 +43,6 @@ export async function apiJson<T>(
   return json as T;
 }
 
-/**
- * A POST or DELETE made through the API: the response body (undefined for 204) and the
- * audit event the API recorded for it.
- */
 export async function apiMutation(
   apiUrl: string,
   session: Session,

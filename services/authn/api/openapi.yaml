@@ -171,9 +171,7 @@ paths:
         service the subject token was issued to, and `audience` must be one that service is
         configured to re-exchange for, otherwise `invalid_target`. Re-exchange keeps the actor
         and can only narrow it; a subject token carrying `delegation_id` is refused with `invalid_request`
-        until delegation revocation can be checked. `actor_token` is not accepted yet; when it is,
-        with `delegation_id` it will be the agent's own
-        credential and the delegation must name that actor.
+        until delegation revocation can be checked. Actor tokens are not accepted.
       security:
         - bearer: []
       requestBody:
@@ -184,10 +182,6 @@ paths:
               type: object
               required: [grant_type, subject_token, subject_token_type, audience]
               additionalProperties: false
-              dependentRequired:
-                actor_token: [actor_token_type]
-                actor_token_type: [actor_token]
-                delegation_id: [actor_token]
               properties:
                 grant_type:
                   const: urn:ietf:params:oauth:grant-type:token-exchange
@@ -198,19 +192,10 @@ paths:
                   enum:
                     - urn:ietf:params:oauth:token-type:jwt
                     - urn:bae6:params:oauth:token-type:session
-                actor_token:
-                  type: string
-                  maxLength: 8192
-                actor_token_type:
-                  enum:
-                    - urn:ietf:params:oauth:token-type:access_token
-                    - urn:ietf:params:oauth:token-type:jwt
                 audience:
                   type: string
                   minLength: 1
                   maxLength: 512
-                delegation_id:
-                  $ref: "../../../contracts/schemas/delegation.json#/$defs/delegationId"
                 requested_token_type:
                   const: urn:ietf:params:oauth:token-type:jwt
       responses:

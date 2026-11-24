@@ -27,7 +27,6 @@ export const handle: Handle = async ({ event, resolve }) => {
   return response;
 };
 
-// Log the message only: errors can carry request details, never tokens we want in logs.
 export const handleError: HandleServerError = ({ error, status }) => {
   console.error(
     JSON.stringify({ msg: "console error", status, error: String(error) }),

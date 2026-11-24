@@ -27,19 +27,14 @@ const CARRIED = [
 
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 const JWT_TYPE = "urn:ietf:params:oauth:token-type:jwt";
-const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 export const SESSION_TOKEN_TYPE = "urn:bae6:params:oauth:token-type:session";
-const TOKEN_TYPES = new Set([JWT_TYPE, ACCESS_TOKEN_TYPE]);
 const SUBJECT_TYPES = new Set([JWT_TYPE, SESSION_TOKEN_TYPE]);
 const MAX_TOKEN_LENGTH = 8192;
 const PARAMS = new Set([
   "grant_type",
   "subject_token",
   "subject_token_type",
-  "actor_token",
-  "actor_token_type",
   "audience",
-  "delegation_id",
   "requested_token_type",
 ]);
 
@@ -64,9 +59,6 @@ export interface ExchangeRequest {
   subjectToken: string;
   subjectTokenType: string;
   audience: string;
-  actorToken?: string;
-  actorTokenType?: string;
-  delegationId?: string;
 }
 
 export interface TokenResponse {
@@ -126,9 +118,6 @@ export function parseExchangeRequest(form: URLSearchParams): ExchangeRequest {
   const subjectToken = one("subject_token");
   const subjectTokenType = one("subject_token_type");
   const audience = one("audience");
-  const actorToken = one("actor_token");
-  const actorTokenType = one("actor_token_type");
-  const delegationId = one("delegation_id");
   const requested = one("requested_token_type");
   if (
     !subjectToken ||
@@ -137,22 +126,10 @@ export function parseExchangeRequest(form: URLSearchParams): ExchangeRequest {
     !SUBJECT_TYPES.has(subjectTokenType) ||
     !audience ||
     audience.length > 512 ||
-    (requested !== undefined && requested !== JWT_TYPE) ||
-    (actorToken === undefined) !== (actorTokenType === undefined) ||
-    (actorToken !== undefined &&
-      (actorToken.length < 1 ||
-        actorToken.length > MAX_TOKEN_LENGTH ||
-        !TOKEN_TYPES.has(actorTokenType as string))) ||
-    (delegationId !== undefined && actorToken === undefined)
+    (requested !== undefined && requested !== JWT_TYPE)
   )
     throw new OAuthError("invalid_request");
-  return {
-    subjectToken,
-    subjectTokenType,
-    audience,
-    ...(actorToken === undefined ? {} : { actorToken, actorTokenType }),
-    ...(delegationId === undefined ? {} : { delegationId }),
-  };
+  return { subjectToken, subjectTokenType, audience };
 }
 
 export async function allActive(
@@ -194,7 +171,7 @@ export async function exchangeToken(
   caller: { audience: string },
   request: ExchangeRequest,
 ): Promise<TokenResponse> {
-  if (request.actorToken !== undefined || request.subjectTokenType !== JWT_TYPE)
+  if (request.subjectTokenType !== JWT_TYPE)
     throw new OAuthError("invalid_request");
   if (!deps.audiences.has(request.audience))
     throw new OAuthError("invalid_target");
@@ -255,10 +232,7 @@ export async function exchangeSession(
   request: ExchangeRequest,
   txn: string,
 ): Promise<TokenResponse> {
-  if (
-    request.actorToken !== undefined ||
-    request.subjectTokenType !== SESSION_TOKEN_TYPE
-  )
+  if (request.subjectTokenType !== SESSION_TOKEN_TYPE)
     throw new OAuthError("invalid_request");
   if (!deps.audiences.has(request.audience))
     throw new OAuthError("invalid_target");

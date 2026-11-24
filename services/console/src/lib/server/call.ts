@@ -5,12 +5,10 @@ import type { Session } from "./session";
 
 function baseOf(service: Service): string {
   const url = serviceUrl(service);
-  // A service this console is not set up for has no pages.
   if (!url) error(404, "Not found.");
   return url;
 }
 
-/** The user's token for one service; an ended session sends the user back to login. */
 async function bearer(
   locals: { session: Session | null },
   service: Service,
@@ -21,10 +19,6 @@ async function bearer(
   return { accessToken: token };
 }
 
-/**
- * Calls a service as the logged-in user. A rejected token sends the user back to login;
- * any other API refusal (403, 404, 409 ...) is shown with its own status.
- */
 export async function callApi<T>(
   locals: { session: Session | null },
   path: string,
@@ -44,10 +38,6 @@ export async function callApi<T>(
   }
 }
 
-/**
- * Makes a change as the logged-in user. A refusal is returned, not thrown, so the form
- * can show it next to the input; the API decides, the console only reports.
- */
 export async function mutate(
   locals: { session: Session | null },
   path: string,
