@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
-import { KeyError, type Signer, thumbprint } from "./keys.js";
+import { KeyError, kmsSigner, type Signer } from "./keys.js";
 
 const VERSION =
   /^projects\/[a-z0-9-]{1,63}\/locations\/[a-z0-9-]{1,63}\/keyRings\/[A-Za-z0-9_-]{1,63}\/cryptoKeys\/[A-Za-z0-9_-]{1,63}\/cryptoKeyVersions\/[1-9][0-9]{0,18}$/;
@@ -90,15 +90,8 @@ export async function cloudKmsSigner(
   )
     throw new KeyError("Expected the configured Cloud KMS P-256 public key");
   const key = createPublicKey(pem);
-  const jwk = key.export({ format: "jwk" });
-  if (jwk.kty !== "EC" || jwk.crv !== "P-256")
-    throw new KeyError("Expected a P-256 public key");
-  const kid = thumbprint(jwk);
-
-  return {
-    kid,
-    alg: "ES256",
-    publicJwk: { ...jwk, kid, alg: "ES256", use: "sig" },
+  return kmsSigner({
+    publicKey: async () => key.export({ format: "der", type: "spki" }),
     async sign(input) {
       try {
         const digest = createHash("sha256").update(input).digest("base64");
@@ -115,16 +108,10 @@ export async function cloudKmsSigner(
         const der = Buffer.from(result.signature, "base64");
         if (der.length > 72 || !verify("sha256", input, key, der))
           throw new KeyError("Cloud KMS signature verification failed");
-        const rLength = der[3] as number;
-        const r = der.subarray(4, 4 + rLength);
-        const s = der.subarray(6 + rLength);
-        const raw = Buffer.alloc(64);
-        r.subarray(-32).copy(raw, 32 - Math.min(r.length, 32));
-        s.subarray(-32).copy(raw, 64 - Math.min(s.length, 32));
-        return raw;
+        return der;
       } catch (err) {
         throw new KeyError("Cloud KMS signing failed", { cause: err });
       }
     },
-  };
+  });
 }

@@ -33,7 +33,7 @@ export class KeyError extends Error {}
 
 const b64url = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 
-export function thumbprint(jwk: JsonWebKey): string {
+function thumbprint(jwk: JsonWebKey): string {
   const members =
     jwk.kty === "EC"
       ? { crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }
