@@ -41,6 +41,12 @@ if (allowHttp && env.NODE_ENV !== "development")
   throw new Error("BAE6_AUTHN_ALLOW_HTTP needs NODE_ENV=development");
 if (allowHttp) log({ msg: "insecure_dev_flag", flag: "BAE6_AUTHN_ALLOW_HTTP" });
 
+const httpOrigin = env.BAE6_AUTHN_HTTP_ORIGIN === "true";
+if (httpOrigin && env.NODE_ENV !== "development")
+  throw new Error("BAE6_AUTHN_HTTP_ORIGIN needs NODE_ENV=development");
+if (httpOrigin)
+  log({ msg: "insecure_dev_flag", flag: "BAE6_AUTHN_HTTP_ORIGIN" });
+
 const port = int("PORT", 8080, 1, 65535);
 const poolMax = int("BAE6_AUTHN_DB_POOL_MAX", 10, 1, 100);
 const shutdownDelayMs = int("BAE6_SHUTDOWN_DELAY_MS", 0, 0, 15_000);
@@ -241,6 +247,7 @@ const bff = createBffRoutes({
   sessionTtlSeconds,
   issuer,
   allowHttp,
+  httpOrigin,
 });
 const tokens = createTokenRoutes({
   db: pool,

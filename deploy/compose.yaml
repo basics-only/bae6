@@ -49,6 +49,7 @@ services:
       BAE6_AUTHN_SECRETS_DIR: /run/secrets/authn
       BAE6_AUTHN_KEYS_DIR: /run/secrets/authn-keys
       BAE6_AUTHN_ALLOW_HTTP: "true"
+      BAE6_AUTHN_HTTP_ORIGIN: "true"
       BAE6_AUTHN_TENANT_HOSTS: acme.bae6.localhost:8091=acme
       BAE6_AUTHN_ISSUER: http://authn:8080
       BAE6_AUTHN_AUDIENCES: bae6-authn,bae6-authz,bae6-ai,eval-worker,agent-worker,data-api,embed-api,mcp-gateway,mcp-registry
