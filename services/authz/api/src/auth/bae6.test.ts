@@ -72,7 +72,7 @@ test("a bae6 token becomes a tenant principal named by its type and id", async (
   });
 });
 
-test("tokens that are forged, mistyped, for another audience, or malformed are refused", async () => {
+test("tokens that are forged, mistyped, for another audience, delegated or malformed are refused", async () => {
   for (const authorization of [
     undefined,
     "Bearer not-a-jwt",
@@ -83,6 +83,8 @@ test("tokens that are forged, mistyped, for another audience, or malformed are r
     await bearer({ tenant_id: "Bad Tenant" }),
     await bearer({ principal_type: "root" }),
     await bearer({ tenant_id: undefined }),
+    await bearer({ act: { sub: "prn_agent" } }),
+    await bearer({ delegation_id: "dlg_x" }),
   ])
     assert.equal(await authenticate(authorization), null);
 });
