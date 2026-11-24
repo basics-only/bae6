@@ -17,6 +17,7 @@ type org_unit
   relations
     define parent: [org_unit]
     define is_root: [user:*, service:*, agent:*, application:*]
+    define placed: [user, service, agent, application]
 
     define access_admin_grant: [user, group#member, service]
     define access_admin: access_admin_grant or access_admin from parent

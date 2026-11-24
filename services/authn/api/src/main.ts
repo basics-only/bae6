@@ -14,6 +14,7 @@ import {
   syncKeys,
 } from "./keys.js";
 import { OidcError, OidcProvider } from "./oidc.js";
+import { createPlacementRoutes, PLACEMENT_CLIENT } from "./placement-routes.js";
 import type { ConnectionPolicy } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { MAX_SESSION_TTL_SECONDS } from "./sessions.js";
@@ -91,6 +92,8 @@ const audiences = new Set(
 );
 if (audiences.size > 64 || ![...audiences].every((a) => SLUG.test(a)))
   throw new Error("BAE6_AUTHN_AUDIENCES must be up to 64 service slugs");
+if (audiences.has(PLACEMENT_CLIENT))
+  throw new Error(`${PLACEMENT_CLIENT} is reserved for the placement client`);
 if (!audiences.has(AUTHN_AUDIENCE))
   throw new Error(
     `BAE6_AUTHN_AUDIENCES must include ${AUTHN_AUDIENCE}, the audience /auth/me bearer tokens need`,
@@ -145,6 +148,8 @@ const sessionClients = (env.BAE6_AUTHN_SESSION_CLIENTS ?? "")
   .filter(Boolean);
 if (sessionClients.length > 16 || !sessionClients.every((c) => SLUG.test(c)))
   throw new Error("BAE6_AUTHN_SESSION_CLIENTS must be up to 16 client slugs");
+if (sessionClients.includes(PLACEMENT_CLIENT))
+  throw new Error(`${PLACEMENT_CLIENT} is reserved for the placement client`);
 
 async function clientSecret(client: string): Promise<string | undefined> {
   let secret: string;
@@ -258,12 +263,15 @@ const tokens = createTokenRoutes({
   sessionClients,
   clientSecret,
 });
+const placement = createPlacementRoutes({ db: pool, clientSecret });
 const server = createAuthnApi({
   ping: async () => void (await activeSigner(pool, signers)),
   requestTimeoutMs,
   log,
   routes: async (req, res, url) =>
-    (await tokens(req, res, url)) || bff(req, res, url),
+    (await tokens(req, res, url)) ||
+    (await placement(req, res, url)) ||
+    bff(req, res, url),
 });
 server.listen(port, "0.0.0.0", () => log({ msg: "listening", port }));
 

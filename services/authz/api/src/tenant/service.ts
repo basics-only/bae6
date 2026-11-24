@@ -114,7 +114,8 @@ interface Tuple {
 }
 
 const ID = "[A-Za-z0-9_@.+|-]{1,256}";
-const UNIT = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const UNIT = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const PLACEABLE = /^(user|service|agent|application):(prn_[0-9a-f]{32})$/;
 const ADMIN_SUBJECT = new RegExp(`^((user|service):${ID}|group:${ID}#member)$`);
 const GUARDRAIL_SUBJECT = new RegExp(
   `^((${PRINCIPAL_TYPES.join("|")}):(${ID}|\\*)|group:${ID}#member)$`,
@@ -156,6 +157,13 @@ export function createTenantService(deps: {
   client: OpenFgaClient;
   organization: string;
   maxDepth?: number;
+  placements?: {
+    place(input: {
+      tenantId: string;
+      principalId: string;
+      orgPath: string[];
+    }): Promise<unknown>;
+  };
 }) {
   const { pool, client, organization } = deps;
   const maxDepth = deps.maxDepth ?? 8;
@@ -313,6 +321,32 @@ export function createTenantService(deps: {
     }
   }
 
+  const rewrite = (writes: Tuple[], deletes: Tuple[]) => {
+    dispatchable();
+    return fga(
+      () => client.write({ writes, deletes }),
+      (m) => (/already exist/i.test(m) ? conflict(m) : invalid(m)),
+    ).catch(markAmbiguous);
+  };
+
+  async function pathOf(unit: string): Promise<string[]> {
+    const path = [unit];
+    for (;;) {
+      const parents = await read({
+        object: `org_unit:${path[0]}`,
+        relation: "parent",
+      });
+      const parent = parents[0];
+      if (!parent) break;
+      if (parents.length > 1 || path.length > MAX_DEPTH)
+        throw new HttpError(500, "internal", "The unit tree is malformed.");
+      path.unshift(parent.key.user.slice("org_unit:".length));
+    }
+    if (path[0] !== organization)
+      throw new HttpError(404, "not_found", "Unknown unit.");
+    return path;
+  }
+
   const isRoot = async (node: string) =>
     (await read({ object: node, relation: "is_root" })).length > 0;
 
@@ -375,6 +409,8 @@ export function createTenantService(deps: {
       requestId?: string,
     ) {
       const node = unitOf(root);
+      if (root !== organization)
+        throw invalid("The root unit must be named after the tenant.");
       if (!ACTOR.test(operator) || !ACTOR.test(admin)) {
         throw invalid("operator and admin must be a user or service.");
       }
@@ -554,6 +590,74 @@ export function createTenantService(deps: {
         async () => {
           await requireRelation(actor, "can_set_guardrails", node);
           await (enable ? write([tuple]) : remove([tuple]));
+        },
+      );
+    },
+
+    async placePrincipal(
+      actor: string,
+      subject: string,
+      unit: string,
+      requestId?: string,
+    ) {
+      const match = PLACEABLE.exec(subject);
+      if (!match)
+        throw invalid(
+          "subject must be a user, service, agent or application principal.",
+        );
+      const principalId = match[2] as string;
+      const node = unitOf(unit);
+      if (!deps.placements)
+        throw new HttpError(500, "internal", "Placement is not configured.");
+      const { placements } = deps;
+      return audited(
+        actor,
+        "tenant.principal.place",
+        { subject, unit: node },
+        requestId,
+        async () => {
+          const orgPath = await pathOf(unit);
+          await requireRelation(actor, "access_admin", node);
+          const current = await read({
+            user: subject,
+            relation: "placed",
+            object: "org_unit:",
+          });
+          if (current.length > 1)
+            throw new HttpError(
+              500,
+              "internal",
+              "A principal has more than one unit.",
+            );
+          const old = current[0]?.key as Tuple | undefined;
+          if (old && old.object !== node) {
+            await requireRelation(actor, "access_admin", old.object);
+          }
+          await placements
+            .place({ tenantId: organization, principalId, orgPath })
+            .catch((err: { status?: number }) => {
+              if (
+                err.status === 400 ||
+                err.status === 404 ||
+                err.status === 409
+              )
+                throw new HttpError(
+                  err.status,
+                  err.status === 409 ? "conflict" : "invalid_request",
+                  "authn refused the placement.",
+                );
+              throw new HttpError(
+                503,
+                "placement_unavailable",
+                "authn did not accept the placement; repeat the request.",
+              );
+            });
+          if (old?.object !== node) {
+            await rewrite(
+              [{ user: subject, relation: "placed", object: node }],
+              old ? [old] : [],
+            );
+          }
         },
       );
     },

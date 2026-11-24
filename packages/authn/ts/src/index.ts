@@ -167,4 +167,25 @@ export class Authn {
       orgPath: body.orgPath,
     };
   }
+
+  /** Moves a principal to `orgPath`; needs the placement client secret. */
+  async placePrincipal(input: {
+    tenantId: string;
+    principalId: string;
+    orgPath: string[];
+  }): Promise<string[]> {
+    const body = await this.#http.json(
+      "PUT",
+      `/admin/principals/${encodeURIComponent(input.principalId)}/org-path`,
+      { body: { tenantId: input.tenantId, orgPath: input.orgPath } },
+    );
+    if (
+      !isObject(body) ||
+      !Array.isArray(body.orgPath) ||
+      !body.orgPath.every((p) => typeof p === "string")
+    ) {
+      throw invalidResponse();
+    }
+    return body.orgPath;
+  }
 }
