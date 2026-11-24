@@ -255,6 +255,7 @@ test(
     for (const [claims, header] of [
       [{ exp: now + 600 }, {}],
       [{ iat: now - 400, exp: now - 100 }, {}],
+      [{ iat: now - 100, exp: now - 10 }, {}],
       [{ aud: ["gateway", "data-api"] }, {}],
       [{ scope: "admin" }, {}],
       [{ org_path: ["globex"] }, {}],
@@ -262,6 +263,7 @@ test(
       [{}, { kid: "unknown-kid" }],
     ] as const)
       await rejects(verifyToken(db, await forge(claims, header), opts));
+    await rejects(verifyToken(db, "not-a-jwt", opts));
     assert.ok(await verifyToken(db, await forge({}), opts));
   },
 );

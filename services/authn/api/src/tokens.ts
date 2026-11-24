@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { createLocalJWKSet, jwtVerify } from "jose";
+import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 import type { Pool } from "pg";
 import {
   activeSigner,
@@ -160,8 +160,13 @@ export async function verifyToken(
   token: string,
   { issuer, audience }: { issuer: string; audience: string },
 ): Promise<Bae6Claims> {
-  const keys = createLocalJWKSet({ keys: await publishedKeys(db) });
   let payload: Record<string, unknown>;
+  try {
+    decodeProtectedHeader(token);
+  } catch (err) {
+    throw new TokenError("token rejected", { cause: err });
+  }
+  const keys = createLocalJWKSet({ keys: await publishedKeys(db) });
   try {
     ({ payload } = await jwtVerify(token, keys, {
       issuer,
@@ -176,6 +181,7 @@ export async function verifyToken(
   }
   const { iat, exp } = payload as { iat: number; exp: number };
   if (
+    exp <= Date.now() / 1000 ||
     exp - iat > TOKEN_TTL_SECONDS ||
     iat > Date.now() / 1000 + CLOCK_SKEW_SECONDS
   )
