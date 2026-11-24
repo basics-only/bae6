@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { bootstrapAdmin, workloadSubject } from "./bootstrap.js";
+import {
+  bootstrapAdmin,
+  bootstrapTenantStore,
+  workloadSubject,
+} from "./bootstrap.js";
 import { validateExtension, writeExtension } from "./extension.js";
 import { validateModel, writeModel } from "./model.js";
 
@@ -9,6 +13,7 @@ const usage = `usage:
   pnpm model validate-extension <extension.fga>   (core + extension, both suites)
   pnpm model write-extension <extension.fga> --store-id <id> [--api-url <url>]
   pnpm model write <model.fga> --store-id <id> [--api-url <url>]   (default OPENFGA_API_URL)
+  pnpm model bootstrap-tenant --organization <org> [--api-url <url>]   (default OPENFGA_API_URL)
   pnpm model bootstrap-admin --organization <org> (--issuer <iss> --workload <id> | --admin <subject>) [--api-url <url>]   (default OPENFGA_API_URL)`;
 
 const { positionals, values } = parseArgs({
@@ -23,6 +28,21 @@ const { positionals, values } = parseArgs({
   },
 });
 const [command, relativeFile] = positionals;
+
+if (command === "bootstrap-tenant") {
+  const apiUrl = values["api-url"] ?? process.env.OPENFGA_API_URL;
+  if (!values.organization || !apiUrl) {
+    console.error(usage);
+    process.exit(2);
+  }
+  const { storeId, modelId } = await bootstrapTenantStore(
+    resolve(import.meta.dirname, "../../models/openfga/tenant.fga"),
+    { apiUrl, organization: values.organization },
+  );
+  console.log(`BAE6_TENANT_STORE_ID=${storeId}`);
+  console.log(`BAE6_TENANT_MODEL_ID=${modelId}`);
+  process.exit(0);
+}
 
 if (command === "bootstrap-admin") {
   // An oidc workload is named by the hash of its issuer and client ID, as the API computes it.

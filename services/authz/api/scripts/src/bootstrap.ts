@@ -19,6 +19,19 @@ const SUBJECT = /^[A-Za-z0-9._@+-]{1,128}$/;
 // Same as the API's organization ID: an issuer's configured `organization`.
 const ORGANIZATION = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
+async function storeExists(client: OpenFgaClient, name: string) {
+  let continuationToken: string | undefined;
+  do {
+    const page = await client.listStores({
+      pageSize: 100,
+      ...(continuationToken ? { continuationToken } : {}),
+    });
+    if (page.stores.some((s) => s.name === name)) return true;
+    continuationToken = page.continuation_token || undefined;
+  } while (continuationToken);
+  return false;
+}
+
 /**
  * Creates authz's own admin store, writes the admin model and makes `admin` the
  * first security admin of `organization`. Both are supplied by the operator; nothing is
@@ -37,19 +50,11 @@ export async function bootstrapAdmin(
     );
   }
   const lister = new OpenFgaClient({ apiUrl: target.apiUrl });
-  let continuationToken: string | undefined;
-  do {
-    const page = await lister.listStores({
-      pageSize: 100,
-      ...(continuationToken ? { continuationToken } : {}),
-    });
-    if (page.stores.some((s) => s.name === ADMIN_STORE_NAME)) {
-      throw new Error(
-        `a store named ${ADMIN_STORE_NAME} already exists; grant roles by writing tuples to it`,
-      );
-    }
-    continuationToken = page.continuation_token || undefined;
-  } while (continuationToken);
+  if (await storeExists(lister, ADMIN_STORE_NAME)) {
+    throw new Error(
+      `a store named ${ADMIN_STORE_NAME} already exists; grant roles by writing tuples to it`,
+    );
+  }
 
   const { id: storeId } = await lister.createStore({ name: ADMIN_STORE_NAME });
   const modelId = await writeModel(modelFile, {
@@ -68,6 +73,28 @@ export async function bootstrapAdmin(
         object: `organization:${target.organization}`,
       },
     ],
+  });
+  return { storeId, modelId };
+}
+
+export async function bootstrapTenantStore(
+  modelFile: string,
+  target: { apiUrl: string; organization: string },
+): Promise<{ storeId: string; modelId: string }> {
+  if (!ORGANIZATION.test(target.organization)) {
+    throw new Error(
+      "organization must be lowercase letters, digits and hyphens (at most 63)",
+    );
+  }
+  const name = `bae6-tenant-${target.organization}`;
+  const client = new OpenFgaClient({ apiUrl: target.apiUrl });
+  if (await storeExists(client, name)) {
+    throw new Error(`a store named ${name} already exists`);
+  }
+  const { id: storeId } = await client.createStore({ name });
+  const modelId = await writeModel(modelFile, {
+    apiUrl: target.apiUrl,
+    storeId,
   });
   return { storeId, modelId };
 }

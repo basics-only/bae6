@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { OpenFgaClient } from "@openfga/sdk";
-import { bootstrapAdmin, workloadSubject } from "./bootstrap.js";
+import {
+  bootstrapAdmin,
+  bootstrapTenantStore,
+  workloadSubject,
+} from "./bootstrap.js";
 
 test("names a workload as the API does, by the hash of issuer and client ID", () => {
   // The same vector is pinned in apps/api/src/admin/elevate.test.ts; change both together.
@@ -64,6 +68,36 @@ test(
       for (const id of [...filler, ...(storeId ? [storeId] : [])]) {
         await new OpenFgaClient({ apiUrl, storeId: id }).deleteStore();
       }
+    }
+  },
+);
+
+test(
+  "bootstraps a tenant store once per organization and writes the tenant model",
+  { skip: process.env.OPENFGA_API_URL ? false : "OPENFGA_API_URL not set" },
+  async () => {
+    const apiUrl = process.env.OPENFGA_API_URL as string;
+    const model = resolve(
+      import.meta.dirname,
+      "../../models/openfga/tenant.fga",
+    );
+    const organization = `t${Date.now()}`;
+    await assert.rejects(
+      bootstrapTenantStore(model, { apiUrl, organization: "Acme" }),
+      /organization must be/,
+    );
+    const { storeId, modelId } = await bootstrapTenantStore(model, {
+      apiUrl,
+      organization,
+    });
+    try {
+      assert.ok(modelId);
+      await assert.rejects(
+        bootstrapTenantStore(model, { apiUrl, organization }),
+        /already exists/,
+      );
+    } finally {
+      await new OpenFgaClient({ apiUrl, storeId }).deleteStore();
     }
   },
 );
