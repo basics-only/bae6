@@ -253,3 +253,18 @@ test("placePrincipal maps refusals to typed errors", async () => {
     }
   }
 });
+
+test("revokeDelegation uses the initiating principal bearer and expects no content", async () => {
+  const s = await serve(204, null);
+  const id = `dlg_${"a".repeat(32)}`;
+  try {
+    await s.authn.revokeDelegation(id, "initiator-token");
+    const [req] = s.seen;
+    assert.equal(req?.method, "POST");
+    assert.equal(req?.url, `/v1/delegations/${id}/revoke`);
+    assert.equal(req?.headers.authorization, "Bearer initiator-token");
+    assert.equal(req?.body, "");
+  } finally {
+    await s.close();
+  }
+});

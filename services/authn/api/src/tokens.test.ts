@@ -505,7 +505,7 @@ test(
       { delegation_id: id, sub: LEAVER },
     ])
       await oauthError(exchange(claims), "invalid_request");
-    await revokeDelegation(db, "acme", id);
+    await revokeDelegation(db, "acme", id, ALICE);
     await oauthError(exchange({ delegation_id: id }), "invalid_request");
     const { id: expiring } = await delegate({ taskId: "task-e" });
     await db.query(
@@ -528,7 +528,7 @@ test(
       expiresAt: shared,
     });
     await exchange({ delegation_id: child, task_id: "task-n" });
-    await revokeDelegation(db, "acme", parent);
+    await revokeDelegation(db, "acme", parent, ALICE);
     await oauthError(
       exchange({ delegation_id: child, task_id: "task-n" }),
       "invalid_request",

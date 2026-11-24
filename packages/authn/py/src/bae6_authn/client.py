@@ -1,3 +1,4 @@
+import re
 from urllib.parse import quote
 from dataclasses import dataclass
 from types import TracebackType
@@ -175,6 +176,17 @@ class Authn:
         ):
             raise _invalid_response()
         return Me(principal=cast(Principal, principal), org_path=org_path)
+
+    async def revoke_delegation(self, delegation_id: str, token: str) -> None:
+        if re.fullmatch(r"dlg_[0-9a-f]{32}", delegation_id) is None or not token:
+            raise ValueError("A delegation ID and bearer token are required.")
+        response = await self._http.raw(
+            "POST",
+            f"/v1/delegations/{delegation_id}/revoke",
+            headers={"authorization": f"Bearer {token}"},
+        )
+        if response.status_code != 204:
+            raise _invalid_response()
 
     async def place_principal(
         self, *, tenant_id: str, principal_id: str, principal_type: str, org_path: list[str]
