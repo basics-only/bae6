@@ -1,0 +1,25 @@
+CREATE TABLE delegations (
+  id text PRIMARY KEY CHECK (id ~ '^dlg_[0-9a-f]{32}$'),
+  tenant_id text NOT NULL CHECK (tenant_id ~ '^[a-z0-9][a-z0-9-]{0,62}$'),
+  initiating_principal_id text NOT NULL,
+  actor_principal_id text NOT NULL,
+  application_id text NOT NULL CHECK (application_id ~ '^[a-z0-9][a-z0-9-]{0,62}$'),
+  task_id text NOT NULL CHECK (task_id ~ '^[A-Za-z0-9._-]{1,128}$'),
+  parent_id text,
+  depth integer NOT NULL CHECK (depth BETWEEN 1 AND 8),
+  allowed_resources text[] NOT NULL CHECK (cardinality(allowed_resources) BETWEEN 1 AND 100),
+  allowed_actions text[] NOT NULL CHECK (cardinality(allowed_actions) BETWEEN 1 AND 50),
+  approved_actions text[] NOT NULL DEFAULT '{}' CHECK (approved_actions <@ allowed_actions),
+  policy_version text NOT NULL CHECK (length(policy_version) BETWEEN 1 AND 64),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (initiating_principal_id <> actor_principal_id),
+  CHECK (expires_at > created_at),
+  CHECK ((parent_id IS NULL) = (depth = 1)),
+  UNIQUE (tenant_id, id),
+  FOREIGN KEY (tenant_id, parent_id) REFERENCES delegations (tenant_id, id),
+  FOREIGN KEY (tenant_id, initiating_principal_id) REFERENCES principals (tenant_id, id),
+  FOREIGN KEY (tenant_id, actor_principal_id) REFERENCES principals (tenant_id, id)
+);
+CREATE INDEX delegations_parent ON delegations (parent_id) WHERE parent_id IS NOT NULL;

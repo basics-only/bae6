@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { liveDelegationExpiry } from "./delegations.js";
 import type { Signer } from "./keys.js";
 import { readSession } from "./sessions.js";
 import {
@@ -214,9 +215,7 @@ export async function exchangeToken(
     { id: subject.sub, type: subject.principal_type },
   ];
   if (subject.act) principals.push({ id: subject.act.sub });
-  // shortcut: delegations aren't stored, so revocation can't be checked; refuse until they are.
   if (
-    subject.delegation_id !== undefined ||
     subject.exp <= Math.floor(Date.now() / 1000) ||
     !(await allActive(deps.db, subject.tenant_id, principals)) ||
     (subject.session_id !== undefined &&
@@ -228,13 +227,26 @@ export async function exchangeToken(
       )))
   )
     throw new OAuthError("invalid_request");
+  let notAfter = subject.exp;
+  if (subject.delegation_id !== undefined) {
+    const expires = await liveDelegationExpiry(deps.db, {
+      delegationId: subject.delegation_id,
+      tenantId: subject.tenant_id,
+      initiatingPrincipalId: subject.sub,
+      actorPrincipalId: subject.act?.sub ?? "",
+      taskId: subject.task_id ?? "",
+      applicationId: subject.application_id,
+    });
+    if (!expires) throw new OAuthError("invalid_request");
+    notAfter = Math.min(notAfter, Math.floor(expires.getTime() / 1000));
+  }
   const carried = Object.fromEntries(
     CARRIED.filter((c) => subject[c] !== undefined).map((c) => [c, subject[c]]),
   ) as Pick<Bae6Claims, (typeof CARRIED)[number]>;
   return issue(deps, {
     ...carried,
     aud: request.audience,
-    notAfter: subject.exp,
+    notAfter,
   });
 }
 
