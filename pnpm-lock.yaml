@@ -81,6 +81,9 @@ importers:
 
   examples/authz/express:
     dependencies:
+      '@bae6/authn':
+        specifier: workspace:*
+        version: link:../../../packages/authn/ts
       '@bae6/authz':
         specifier: workspace:*
         version: link:../../../packages/authz/ts
