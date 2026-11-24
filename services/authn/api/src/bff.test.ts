@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
@@ -12,6 +12,7 @@ import {
   type LoginProvider,
 } from "./bff.js";
 import { migratedTestDatabase } from "./db/test-database.js";
+import { createDelegation } from "./delegations.js";
 import { localSigner, syncKeys } from "./keys.js";
 import { OidcError } from "./oidc.js";
 import { PrincipalError, setPrincipalStatus } from "./principals.js";
@@ -713,5 +714,96 @@ test(
     } finally {
       disabler.release();
     }
+  },
+);
+
+test(
+  "only the direct initiating principal can revoke a delegation tree",
+  { skip },
+  async () => {
+    const ownerCookie = sessionCookie(await signIn("delegation-owner"));
+    const otherCookie = sessionCookie(await signIn("delegation-stranger"));
+    const owner = await readSession(db, ownerCookie.split("=")[1]);
+    const other = await readSession(db, otherCookie.split("=")[1]);
+    assert.ok(owner && other);
+    const actor = `prn_${randomBytes(16).toString("hex")}`;
+    const childActor = `prn_${randomBytes(16).toString("hex")}`;
+    await db.query(
+      `INSERT INTO principals (id, tenant_id, type, owner_application_id)
+     VALUES ($1, 'acme', 'agent', 'helper'), ($2, 'acme', 'agent', 'helper')`,
+      [actor, childActor],
+    );
+    const common = {
+      tenantId: "acme",
+      initiatingPrincipalId: owner.principalId,
+      applicationId: "helper",
+      taskId: "revoke-route",
+      allowedResources: ["document:d1"],
+      allowedActions: ["document:read"],
+      expiresAt: new Date(Date.now() + 60_000),
+      policyVersion: "test",
+    };
+    const limits = { maxDepth: 3, maxLifetimeSeconds: 3600 };
+    const { id: root } = await createDelegation(db, limits, {
+      ...common,
+      actorPrincipalId: actor,
+    });
+    const { id: child } = await createDelegation(db, limits, {
+      ...common,
+      actorPrincipalId: childActor,
+      parentDelegationId: root,
+      createdByPrincipalId: actor,
+    });
+    const tokenFor = (session: typeof owner, over: Partial<MintInput> = {}) =>
+      mintToken(db, signers, AUTHN_ISSUER, {
+        aud: AUTHN_AUDIENCE,
+        sub: session.principalId,
+        txn: "revoke-test",
+        tenant_id: session.tenantId,
+        org_path: [session.tenantId],
+        principal_type: "user",
+        session_id: session.id,
+        ...over,
+      }).then(({ token }) => token);
+    const revoke = (id: string, token?: string) =>
+      fetch(`${base}/v1/delegations/${id}/revoke`, {
+        method: "POST",
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+      });
+    assert.equal((await revoke(root)).status, 401);
+    assert.equal(
+      (
+        await revoke(
+          root,
+          await tokenFor(owner, {
+            act: { sub: actor },
+            task_id: common.taskId,
+            application_id: "helper",
+            delegation_id: root,
+          }),
+        )
+      ).status,
+      401,
+    );
+    assert.equal(
+      (await revoke(root, await tokenFor(owner, { aud: "other-audience" })))
+        .status,
+      401,
+    );
+    assert.equal((await revoke(root, await tokenFor(other))).status, 404);
+    const revoked = () =>
+      db.query(
+        "SELECT id FROM delegations WHERE id = ANY($1) AND revoked_at IS NOT NULL",
+        [[root, child]],
+      );
+    assert.equal((await revoked()).rowCount, 0);
+    const ownerToken = await tokenFor(owner);
+    assert.equal(
+      (await revoke(`dlg_${"0".repeat(32)}`, ownerToken)).status,
+      404,
+    );
+    assert.equal((await revoke(root, ownerToken)).status, 204);
+    assert.equal((await revoked()).rowCount, 2);
+    assert.equal((await revoke(root, ownerToken)).status, 204);
   },
 );

@@ -163,6 +163,17 @@ export class Authn {
     };
   }
 
+  async revokeDelegation(delegationId: string, token: string): Promise<void> {
+    if (!/^dlg_[0-9a-f]{32}$/.test(delegationId) || token === "")
+      throw new TypeError("A delegation ID and bearer token are required.");
+    const { status } = await this.#http.raw(
+      "POST",
+      `/v1/delegations/${delegationId}/revoke`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (status !== 204) throw invalidResponse();
+  }
+
   async placePrincipal(input: {
     tenantId: string;
     principalId: string;

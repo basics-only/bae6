@@ -134,6 +134,27 @@ paths:
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
+  /v1/delegations/{id}/revoke:
+    post:
+      operationId: revokeDelegation
+      summary: Revoke a delegation and its descendants.
+      description: >
+        Requires a live, non-delegated bae6-authn bearer token for the initiating
+        principal in the same tenant. Repeating a revocation returns 204.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^dlg_[0-9a-f]{32}$"
+      responses:
+        "204":
+          description: The delegation and its descendants have been revoked.
+        "401":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
   /auth/me:
     get:
       operationId: me

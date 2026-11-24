@@ -251,11 +251,11 @@ test(
       expiresAt: soon,
     });
     const { id: sibling } = await create({ taskId: "task-s" });
-    assert.equal(await revokeDelegation(db, "other", root), 0);
-    assert.equal(await revokeDelegation(db, "acme", mid), 2);
+    assert.equal(await revokeDelegation(db, "other", root, ALICE), undefined);
+    assert.equal(await revokeDelegation(db, "acme", mid, ALICE), 2);
     assert.equal(await revokedAt(root), null);
     assert.notEqual(await revokedAt(leaf), null);
-    assert.equal(await revokeDelegation(db, "acme", mid), 0);
+    assert.equal(await revokeDelegation(db, "acme", mid, ALICE), 0);
     assert.equal(await revokedAt(sibling), null);
     await refused(
       create({
@@ -267,6 +267,6 @@ test(
       }),
       "unknown_parent",
     );
-    assert.equal(await revokeDelegation(db, "acme", root), 1);
+    assert.equal(await revokeDelegation(db, "acme", root, ALICE), 1);
   },
 );
