@@ -40,7 +40,7 @@ export type TokenVerifier = (token: string) => Promise<VerifiedToken | null>;
 const DEFAULT_ALGORITHMS = ["RS256", "ES256"];
 
 // Verification failures that mean "this token is not valid", as opposed to an outage.
-const INVALID_TOKEN_CODES = new Set([
+export const INVALID_TOKEN_CODES = new Set([
   "ERR_JWT_EXPIRED",
   "ERR_JWT_CLAIM_VALIDATION_FAILED",
   "ERR_JWT_INVALID",

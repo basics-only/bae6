@@ -62,6 +62,8 @@ tags:
     description: Authorization models bound to an application.
   - name: audit
     description: Audit events.
+  - name: tenant
+    description: The tenant org tree, authenticated with a bae6 token from authn.
   - name: health
     description: Liveness and readiness.
 security:
@@ -346,6 +348,68 @@ paths:
         "403":
           $ref: "#/components/responses/Error"
         "404":
+          $ref: "#/components/responses/Error"
+  /v1/tenant/principals/{principalId}/unit:
+    put:
+      tags: [tenant]
+      operationId: placePrincipal
+      summary: Place a principal in an org unit
+      description: |
+        Authenticated with a bae6 token issued to `bae6-authz`; the actor is that token's
+        principal and the tenant is its `tenant_id`. The actor needs `access_admin` on the
+        unit, and on the unit the principal is leaving when it moves. authz tells authn
+        before recording the placement, so a refused or failed push leaves authz unchanged;
+        repeating the request is safe. Tokens minted after the push carry the new `org_path`;
+        tokens already issued keep the old one until they expire (at most 300 s).
+      security:
+        - bae6Token: [tenant]
+      parameters:
+        - name: principalId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^prn_[0-9a-f]{32}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [principalType, unit]
+              additionalProperties: false
+              properties:
+                principalType:
+                  enum: [user, service, agent, application]
+                unit:
+                  type: string
+                  pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+      responses:
+        "200":
+          description: The principal is placed in the unit.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [principalId, principalType, unit]
+                properties:
+                  principalId:
+                    type: string
+                  principalType:
+                    type: string
+                  unit:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
           $ref: "#/components/responses/Error"
   /v1/workload-bindings:
     post:
@@ -878,6 +942,12 @@ paths:
           $ref: "#/components/responses/Error"
 components:
   securitySchemes:
+    bae6Token:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        A bae6 token from bae6-authn with audience `bae6-authz`. Its only scope here is `tenant`.
     bearerAuth:
       type: http
       scheme: bearer
