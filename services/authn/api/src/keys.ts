@@ -125,6 +125,53 @@ export async function promoteNextKey(
   }
 }
 
+export async function revokeKey(db: Pool, kid: string): Promise<void> {
+  const client = await db.connect();
+  let broken: Error | undefined;
+  try {
+    await client.query("BEGIN");
+    // Lock the next row before the target, as promoteNextKey does, so the two cannot deadlock.
+    const next = await client.query<{ kid: string; aged: boolean }>(
+      `SELECT kid, created_at <= now() - make_interval(secs => $1) AS aged
+         FROM signing_keys WHERE status = 'next' FOR UPDATE`,
+      [JWKS_MAX_AGE_SECONDS + CLOCK_SKEW_SECONDS],
+    );
+    const { rows } = await client.query<{ status: string }>(
+      "SELECT status FROM signing_keys WHERE kid = $1 FOR UPDATE",
+      [kid],
+    );
+    const status = rows[0]?.status;
+    if (!status) throw new KeyError(`key ${kid} is not in signing_keys`);
+    if (status === "revoked")
+      throw new KeyError(`key ${kid} is already revoked`);
+    let successor: string | undefined;
+    if (status === "active") {
+      successor = next.rows.find((r) => r.aged)?.kid;
+      if (!successor)
+        throw new KeyError(
+          `key ${kid} is active and no next key has been published long enough to take over`,
+        );
+    }
+    await client.query(
+      "UPDATE signing_keys SET status = 'revoked', retired_at = NULL WHERE kid = $1",
+      [kid],
+    );
+    if (successor)
+      await client.query(
+        "UPDATE signing_keys SET status = 'active' WHERE kid = $1",
+        [successor],
+      );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch((rollbackErr: Error) => {
+      broken = rollbackErr;
+    });
+    throw err;
+  } finally {
+    client.release(broken);
+  }
+}
+
 export async function unretireKey(db: Pool, kid: string): Promise<void> {
   try {
     const { rowCount } = await db.query(
@@ -132,7 +179,17 @@ export async function unretireKey(db: Pool, kid: string): Promise<void> {
         WHERE kid = $1 AND status = 'retired'`,
       [kid],
     );
-    if (rowCount !== 1) throw new KeyError(`key ${kid} is not retired`);
+    if (rowCount !== 1) {
+      const { rows } = await db.query<{ status: string }>(
+        "SELECT status FROM signing_keys WHERE kid = $1",
+        [kid],
+      );
+      throw new KeyError(
+        rows[0]?.status === "revoked"
+          ? `key ${kid} is revoked and can never be restored`
+          : `key ${kid} is not retired`,
+      );
+    }
   } catch (err) {
     if ((err as { code?: string }).code === "23505")
       throw new KeyError("another next key is already published", {
@@ -193,7 +250,8 @@ export async function syncKeys(
 export async function publishedKeys(db: Pool): Promise<PublicJwk[]> {
   const { rows } = await db.query<{ public_jwk: PublicJwk }>(
     `SELECT public_jwk FROM signing_keys
-      WHERE status <> 'retired' OR retired_at > now() - make_interval(secs => $1)
+      WHERE status NOT IN ('retired', 'revoked')
+         OR (status = 'retired' AND retired_at > now() - make_interval(secs => $1))
       ORDER BY status = 'active' DESC, created_at DESC LIMIT $2`,
     [TOKEN_TTL_SECONDS + CLOCK_SKEW_SECONDS, MAX_PUBLISHED_KEYS],
   );

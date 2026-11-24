@@ -7,11 +7,15 @@ import {
   activeSigner,
   KeyError,
   localSigner,
+  promoteNextKey,
+  publishedKeys,
   registerKey,
+  revokeKey,
   type Signer,
   syncKeys,
   unretireKey,
 } from "./keys.js";
+import { mintToken, verifyToken } from "./tokens.js";
 
 const url = process.env.BAE6_DATABASE_URL;
 const skip = url ? false : "BAE6_DATABASE_URL not set";
@@ -199,5 +203,94 @@ test(
       [keyA.kid]: "active",
       [keyB.kid]: "retired",
     });
+  },
+);
+
+const opts = { issuer: "https://authn.bae6.test", audience: "gateway" };
+const claims = {
+  aud: "gateway",
+  sub: `prn_${"a".repeat(32)}`,
+  txn: "req-1",
+  tenant_id: "acme",
+  org_path: ["acme"],
+  principal_type: "user",
+};
+const age = () =>
+  db.query("UPDATE signing_keys SET created_at = now() - interval '1 hour'");
+
+test(
+  "a revoked retired key leaves the JWKS at once, stops verifying and cannot be unretired",
+  { skip },
+  async () => {
+    await db.query("TRUNCATE signing_keys");
+    const keyA = p256();
+    const keyB = p256();
+    const both = new Map<string, Signer>([
+      [keyA.kid, keyA],
+      [keyB.kid, keyB],
+    ]);
+    await syncKeys(db, both, keyA.kid);
+    const { token } = await mintToken(db, both, opts.issuer, claims);
+    await age();
+    await syncKeys(db, both, keyB.kid);
+    assert.ok(await verifyToken(db, token, opts));
+
+    await revokeKey(db, keyA.kid);
+    assert.deepEqual(
+      (await publishedKeys(db)).map((k) => k.kid),
+      [keyB.kid],
+    );
+    await assert.rejects(verifyToken(db, token, opts), /token rejected/);
+    await assert.rejects(unretireKey(db, keyA.kid), /revoked/);
+    await assert.rejects(revokeKey(db, keyA.kid), /already revoked/);
+    await assert.rejects(registerKey(db, keyA), /already revoked/);
+    await assert.rejects(syncKeys(db, both, keyA.kid), /is revoked/);
+  },
+);
+
+test("a revoked next key is never promoted", { skip }, async () => {
+  await db.query("TRUNCATE signing_keys");
+  const keyA = p256();
+  const keyB = p256();
+  const both = new Map<string, Signer>([
+    [keyA.kid, keyA],
+    [keyB.kid, keyB],
+  ]);
+  await syncKeys(db, both, keyA.kid);
+  await age();
+  await revokeKey(db, keyB.kid);
+  await assert.rejects(promoteNextKey(db, both), /no next key/);
+  assert.equal((await activeSigner(db, both)).kid, keyA.kid);
+  assert.deepEqual(
+    (await publishedKeys(db)).map((k) => k.kid),
+    [keyA.kid],
+  );
+});
+
+test(
+  "revoking the active key fails unless a published next key can take over, then it does",
+  { skip },
+  async () => {
+    await db.query("TRUNCATE signing_keys");
+    const keyA = p256();
+    const keyB = p256();
+    const both = new Map<string, Signer>([
+      [keyA.kid, keyA],
+      [keyB.kid, keyB],
+    ]);
+    await syncKeys(db, new Map([[keyA.kid, keyA]]), keyA.kid);
+    await assert.rejects(revokeKey(db, keyA.kid), /no next key/);
+
+    await registerKey(db, keyB);
+    await assert.rejects(revokeKey(db, keyA.kid), /no next key/);
+    assert.equal((await activeSigner(db, both)).kid, keyA.kid);
+
+    await age();
+    await revokeKey(db, keyA.kid);
+    assert.equal((await activeSigner(db, both)).kid, keyB.kid);
+    assert.deepEqual(
+      (await publishedKeys(db)).map((k) => k.kid),
+      [keyB.kid],
+    );
   },
 );
