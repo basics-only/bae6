@@ -69,6 +69,12 @@ test("accepts the authz admin model, whose assertions sit in a named file", () =
   );
 });
 
+test("accepts the tenant model and its escalation and guardrail assertions", () => {
+  validateModel(
+    resolve(import.meta.dirname, "../../models/openfga/tenant.fga"),
+  );
+});
+
 test("a named tests file takes precedence over tests.yaml", () => {
   const file = modelDir(VALID_MODEL, tests(false));
   // tests.yaml would fail; the named file passes.

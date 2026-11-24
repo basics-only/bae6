@@ -1,0 +1,437 @@
+name: tenant
+model_file: ./tenant.fga
+
+tuples:
+  - { user: "user:*", relation: is_root, object: org_unit:acme }
+  - { user: org_unit:acme, relation: parent, object: org_unit:finance }
+  - { user: org_unit:finance, relation: parent, object: org_unit:payroll }
+  - { user: org_unit:acme, relation: parent, object: org_unit:software }
+  - { user: org_unit:software, relation: parent, object: org_unit:newteam }
+
+  - { user: user:olga, relation: access_admin_grant, object: org_unit:acme }
+  - { user: "user:*", relation: access_admin_ceiling, object: org_unit:acme }
+  - { user: user:fred, relation: access_admin_grant, object: org_unit:finance }
+  - { user: "user:*", relation: access_admin_ceiling, object: org_unit:finance }
+  - { user: user:pam, relation: access_admin_grant, object: org_unit:payroll }
+  - { user: group:it#member, relation: app_admin_grant, object: org_unit:software }
+  - { user: user:ian, relation: member, object: group:it }
+  - { user: user:sec, relation: security_admin_grant, object: org_unit:finance }
+
+  - { user: user:alice, relation: member, object: group:finance }
+  - { user: user:carl, relation: member, object: group:finance }
+  - { user: user:carl, relation: member, object: group:contractors }
+  - { user: user:dave, relation: member, object: group:eng }
+  - { user: "user:*", relation: model_invoke_allowlist, object: org_unit:acme }
+  - { user: group:contractors#member, relation: model_invoke_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: model_invoke_allowlist, object: org_unit:finance }
+  - { user: "user:*", relation: model_invoke_allowlist, object: org_unit:payroll }
+  - { user: group:eng#member, relation: model_invoke_allowlist, object: org_unit:software }
+  - { user: "user:*", relation: tool_invoke_allowlist, object: org_unit:acme }
+  - { user: "user:*", relation: tool_invoke_allowlist, object: org_unit:finance }
+
+  - { user: org_unit:finance, relation: unit, object: model:finance-llm }
+  - { user: user:alice, relation: invoker, object: model:finance-llm }
+  - { user: user:carl, relation: invoker, object: model:finance-llm }
+  - { user: user:sam, relation: invoker, object: model:finance-llm }
+  - { user: org_unit:payroll, relation: unit, object: model:payroll-llm }
+  - { user: user:sam, relation: invoker, object: model:payroll-llm }
+  - { user: user:alice, relation: invoker, object: model:payroll-llm }
+  - { user: org_unit:software, relation: unit, object: model:code-llm }
+  - { user: user:alice, relation: invoker, object: model:code-llm }
+  - { user: user:dave, relation: invoker, object: model:code-llm }
+  - { user: org_unit:newteam, relation: unit, object: model:new-llm }
+  - { user: user:dave, relation: invoker, object: model:new-llm }
+  - { user: org_unit:finance, relation: unit, object: tool:ledger }
+  - { user: user:sam, relation: invoker, object: tool:ledger }
+
+  - { user: user:rootadm, relation: settings_admin_grant, object: org_unit:acme }
+  - { user: "user:*", relation: settings_admin_ceiling, object: org_unit:acme }
+  - { user: user:fin, relation: settings_admin_grant, object: org_unit:finance }
+  - { user: "user:*", relation: settings_admin_ceiling, object: org_unit:finance }
+  - { user: user:rootadm, relation: app_admin_grant, object: org_unit:acme }
+  - { user: "user:*", relation: app_admin_ceiling, object: org_unit:acme }
+  - { user: user:fin, relation: app_admin_grant, object: org_unit:finance }
+  - { user: "user:*", relation: app_admin_ceiling, object: org_unit:finance }
+  - { user: user:rootadm, relation: budget_admin_grant, object: org_unit:acme }
+  - { user: "user:*", relation: budget_admin_ceiling, object: org_unit:acme }
+  - { user: user:fin, relation: budget_admin_grant, object: org_unit:finance }
+  - { user: user:rootadm, relation: security_admin_grant, object: org_unit:acme }
+  - { user: "user:*", relation: security_admin_ceiling, object: org_unit:acme }
+  - { user: user:fin, relation: security_admin_grant, object: org_unit:finance }
+  - { user: "user:*", relation: is_root, object: org_unit:solo }
+  - { user: user:boss, relation: access_admin_grant, object: org_unit:solo }
+  - { user: user:carl, relation: invoker, object: tool:ledger }
+  - { user: agent:bot, relation: invoker, object: model:finance-llm }
+  - { user: "user:*", relation: is_root, object: org_unit:multi }
+  - { user: "service:*", relation: is_root, object: org_unit:multi }
+  - { user: "agent:*", relation: is_root, object: org_unit:multi }
+  - { user: "application:*", relation: is_root, object: org_unit:multi }
+  - { user: "service:*", relation: model_invoke_allowlist, object: org_unit:multi }
+  - { user: "agent:*", relation: model_invoke_allowlist, object: org_unit:multi }
+  - { user: "application:*", relation: model_invoke_allowlist, object: org_unit:multi }
+  - { user: org_unit:multi, relation: unit, object: model:multi-llm }
+  - { user: service:svc, relation: invoker, object: model:multi-llm }
+  - { user: agent:bot, relation: invoker, object: model:multi-llm }
+  - { user: application:app, relation: invoker, object: model:multi-llm }
+  - { user: user:alice, relation: invoker, object: model:multi-llm }
+  - { user: "user:*", relation: application_use_allowlist, object: org_unit:acme }
+  - { user: user:blk0, relation: application_use_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: application_use_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: application:r1 }
+  - { user: user:blk0, relation: member, object: group:finance }
+  - { user: user:alice, relation: user, object: application:r1 }
+  - { user: user:sam, relation: user, object: application:r1 }
+  - { user: user:blk0, relation: user, object: application:r1 }
+  - { user: user:blk1, relation: user, object: application:r1 }
+  - { user: user:blk2, relation: user, object: application:r1 }
+  - { user: user:blk3, relation: user, object: application:r1 }
+  - { user: user:blk4, relation: user, object: application:r1 }
+  - { user: user:blk5, relation: user, object: application:r1 }
+  - { user: user:blk6, relation: user, object: application:r1 }
+  - { user: user:blk7, relation: user, object: application:r1 }
+  - { user: "user:*", relation: api_call_allowlist, object: org_unit:acme }
+  - { user: user:blk1, relation: api_call_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: api_call_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: api:r1 }
+  - { user: user:blk1, relation: member, object: group:finance }
+  - { user: user:alice, relation: caller, object: api:r1 }
+  - { user: user:sam, relation: caller, object: api:r1 }
+  - { user: user:blk0, relation: caller, object: api:r1 }
+  - { user: user:blk1, relation: caller, object: api:r1 }
+  - { user: user:blk2, relation: caller, object: api:r1 }
+  - { user: user:blk3, relation: caller, object: api:r1 }
+  - { user: user:blk4, relation: caller, object: api:r1 }
+  - { user: user:blk5, relation: caller, object: api:r1 }
+  - { user: user:blk6, relation: caller, object: api:r1 }
+  - { user: user:blk7, relation: caller, object: api:r1 }
+  - { user: "user:*", relation: agent_run_allowlist, object: org_unit:acme }
+  - { user: user:blk2, relation: agent_run_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: agent_run_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: agent_definition:r1 }
+  - { user: user:blk2, relation: member, object: group:finance }
+  - { user: user:alice, relation: runner, object: agent_definition:r1 }
+  - { user: user:sam, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk0, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk1, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk2, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk3, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk4, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk5, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk6, relation: runner, object: agent_definition:r1 }
+  - { user: user:blk7, relation: runner, object: agent_definition:r1 }
+  - { user: "user:*", relation: prompt_use_allowlist, object: org_unit:acme }
+  - { user: user:blk3, relation: prompt_use_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: prompt_use_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: prompt:r1 }
+  - { user: user:blk3, relation: member, object: group:finance }
+  - { user: user:alice, relation: user, object: prompt:r1 }
+  - { user: user:sam, relation: user, object: prompt:r1 }
+  - { user: user:blk0, relation: user, object: prompt:r1 }
+  - { user: user:blk1, relation: user, object: prompt:r1 }
+  - { user: user:blk2, relation: user, object: prompt:r1 }
+  - { user: user:blk3, relation: user, object: prompt:r1 }
+  - { user: user:blk4, relation: user, object: prompt:r1 }
+  - { user: user:blk5, relation: user, object: prompt:r1 }
+  - { user: user:blk6, relation: user, object: prompt:r1 }
+  - { user: user:blk7, relation: user, object: prompt:r1 }
+  - { user: "user:*", relation: mcp_server_use_allowlist, object: org_unit:acme }
+  - { user: user:blk4, relation: mcp_server_use_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: mcp_server_use_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: mcp_server:r1 }
+  - { user: user:blk4, relation: member, object: group:finance }
+  - { user: user:alice, relation: user, object: mcp_server:r1 }
+  - { user: user:sam, relation: user, object: mcp_server:r1 }
+  - { user: user:blk0, relation: user, object: mcp_server:r1 }
+  - { user: user:blk1, relation: user, object: mcp_server:r1 }
+  - { user: user:blk2, relation: user, object: mcp_server:r1 }
+  - { user: user:blk3, relation: user, object: mcp_server:r1 }
+  - { user: user:blk4, relation: user, object: mcp_server:r1 }
+  - { user: user:blk5, relation: user, object: mcp_server:r1 }
+  - { user: user:blk6, relation: user, object: mcp_server:r1 }
+  - { user: user:blk7, relation: user, object: mcp_server:r1 }
+  - { user: "user:*", relation: dataset_query_allowlist, object: org_unit:acme }
+  - { user: user:blk5, relation: dataset_query_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: dataset_query_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: dataset:r1 }
+  - { user: user:blk5, relation: member, object: group:finance }
+  - { user: user:alice, relation: querier, object: dataset:r1 }
+  - { user: user:sam, relation: querier, object: dataset:r1 }
+  - { user: user:blk0, relation: querier, object: dataset:r1 }
+  - { user: user:blk1, relation: querier, object: dataset:r1 }
+  - { user: user:blk2, relation: querier, object: dataset:r1 }
+  - { user: user:blk3, relation: querier, object: dataset:r1 }
+  - { user: user:blk4, relation: querier, object: dataset:r1 }
+  - { user: user:blk5, relation: querier, object: dataset:r1 }
+  - { user: user:blk6, relation: querier, object: dataset:r1 }
+  - { user: user:blk7, relation: querier, object: dataset:r1 }
+  - { user: "user:*", relation: document_read_allowlist, object: org_unit:acme }
+  - { user: user:blk6, relation: document_read_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: document_read_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: document:r1 }
+  - { user: user:blk6, relation: member, object: group:finance }
+  - { user: user:alice, relation: reader, object: document:r1 }
+  - { user: user:sam, relation: reader, object: document:r1 }
+  - { user: user:blk0, relation: reader, object: document:r1 }
+  - { user: user:blk1, relation: reader, object: document:r1 }
+  - { user: user:blk2, relation: reader, object: document:r1 }
+  - { user: user:blk3, relation: reader, object: document:r1 }
+  - { user: user:blk4, relation: reader, object: document:r1 }
+  - { user: user:blk5, relation: reader, object: document:r1 }
+  - { user: user:blk6, relation: reader, object: document:r1 }
+  - { user: user:blk7, relation: reader, object: document:r1 }
+  - { user: "user:*", relation: service_call_allowlist, object: org_unit:acme }
+  - { user: user:blk7, relation: service_call_blocklist, object: org_unit:acme }
+  - { user: group:finance#member, relation: service_call_allowlist, object: org_unit:finance }
+  - { user: org_unit:finance, relation: unit, object: service_resource:r1 }
+  - { user: user:blk7, relation: member, object: group:finance }
+  - { user: user:alice, relation: caller, object: service_resource:r1 }
+  - { user: user:sam, relation: caller, object: service_resource:r1 }
+  - { user: user:blk0, relation: caller, object: service_resource:r1 }
+  - { user: user:blk1, relation: caller, object: service_resource:r1 }
+  - { user: user:blk2, relation: caller, object: service_resource:r1 }
+  - { user: user:blk3, relation: caller, object: service_resource:r1 }
+  - { user: user:blk4, relation: caller, object: service_resource:r1 }
+  - { user: user:blk5, relation: caller, object: service_resource:r1 }
+  - { user: user:blk6, relation: caller, object: service_resource:r1 }
+  - { user: user:blk7, relation: caller, object: service_resource:r1 }
+
+tests:
+  - name: admin capabilities cover the subtree, never ancestors or siblings
+    check:
+      - user: user:fred
+        object: org_unit:payroll
+        assertions: { access_admin: true }
+      - user: user:fred
+        object: org_unit:acme
+        assertions: { access_admin: false }
+      - user: user:fred
+        object: org_unit:software
+        assertions: { access_admin: false }
+      - user: user:ian
+        object: org_unit:newteam
+        assertions: { app_admin: true, access_admin: false }
+
+  - name: granting needs the capability and the node's ceiling
+    check:
+      - user: user:olga
+        object: org_unit:acme
+        assertions: { can_grant_access_admin: true }
+      - user: user:fred
+        object: org_unit:finance
+        assertions: { can_grant_access_admin: true, can_grant_settings_admin: false }
+      - user: user:fred
+        object: org_unit:payroll
+        assertions: { can_grant_access_admin: false }
+      - user: user:olga
+        object: org_unit:payroll
+        assertions: { can_grant_access_admin: false }
+      - user: user:fred
+        object: org_unit:software
+        assertions: { can_grant_access_admin: false }
+      - user: user:pam
+        object: org_unit:payroll
+        assertions: { access_admin: true, can_grant_access_admin: false }
+
+  - name: only the parent's granters set a node's ceiling, so nobody raises their own
+    check:
+      - user: user:fred
+        object: org_unit:payroll
+        assertions: { can_set_access_admin_ceiling: true }
+      - user: user:pam
+        object: org_unit:payroll
+        assertions: { can_set_access_admin_ceiling: false }
+      - user: user:fred
+        object: org_unit:finance
+        assertions: { can_set_access_admin_ceiling: false }
+      - user: user:olga
+        object: org_unit:finance
+        assertions: { can_set_access_admin_ceiling: true }
+      - user: user:olga
+        object: org_unit:acme
+        assertions: { can_set_access_admin_ceiling: false }
+
+  - name: an inherited allow-list limits every node below it
+    check:
+      - user: user:alice
+        object: model:finance-llm
+        assertions: { can_invoke: true }
+      - user: user:sam
+        object: model:finance-llm
+        assertions: { can_invoke: false }
+      - user: user:sam
+        object: model:payroll-llm
+        assertions: { can_invoke: false }
+      - user: user:alice
+        object: model:payroll-llm
+        assertions: { can_invoke: true }
+
+  - name: an inherited block-list denies even a direct invoker
+    check:
+      - user: user:carl
+        object: model:finance-llm
+        assertions: { can_invoke: false }
+
+  - name: a child tightens; a node with no allow-list fails closed
+    check:
+      - user: user:dave
+        object: model:code-llm
+        assertions: { can_invoke: true }
+      - user: user:alice
+        object: model:code-llm
+        assertions: { can_invoke: false }
+      - user: user:dave
+        object: model:new-llm
+        assertions: { can_invoke: false }
+
+  - name: guardrails are per action
+    check:
+      - user: user:sam
+        object: tool:ledger
+        assertions: { can_invoke: true }
+
+  - name: admins manage and grant resources below them but get no ordinary access
+    check:
+      - user: user:olga
+        object: model:finance-llm
+        assertions: { can_grant: true, can_invoke: false, can_manage: false }
+      - user: user:fred
+        object: model:code-llm
+        assertions: { can_grant: false }
+      - user: user:ian
+        object: model:code-llm
+        assertions: { can_manage: true, can_invoke: false }
+      - user: user:sec
+        object: org_unit:payroll
+        assertions: { can_set_guardrails: true, can_read_audit: true }
+      - user: user:sec
+        object: org_unit:acme
+        assertions: { can_set_guardrails: false }
+
+  - name: every action applies its own allow-list and block-list
+    check:
+      - { user: user:alice, object: application:r1, assertions: { can_use: true } }
+      - { user: user:sam, object: application:r1, assertions: { can_use: false } }
+      - { user: user:blk0, object: application:r1, assertions: { can_use: false } }
+      - { user: user:blk1, object: application:r1, assertions: { can_use: true } }
+      - { user: user:blk2, object: application:r1, assertions: { can_use: true } }
+      - { user: user:blk3, object: application:r1, assertions: { can_use: true } }
+      - { user: user:blk4, object: application:r1, assertions: { can_use: true } }
+      - { user: user:blk5, object: application:r1, assertions: { can_use: true } }
+      - { user: user:blk6, object: application:r1, assertions: { can_use: true } }
+      - { user: user:blk7, object: application:r1, assertions: { can_use: true } }
+      - { user: user:alice, object: api:r1, assertions: { can_call: true } }
+      - { user: user:sam, object: api:r1, assertions: { can_call: false } }
+      - { user: user:blk0, object: api:r1, assertions: { can_call: true } }
+      - { user: user:blk1, object: api:r1, assertions: { can_call: false } }
+      - { user: user:blk2, object: api:r1, assertions: { can_call: true } }
+      - { user: user:blk3, object: api:r1, assertions: { can_call: true } }
+      - { user: user:blk4, object: api:r1, assertions: { can_call: true } }
+      - { user: user:blk5, object: api:r1, assertions: { can_call: true } }
+      - { user: user:blk6, object: api:r1, assertions: { can_call: true } }
+      - { user: user:blk7, object: api:r1, assertions: { can_call: true } }
+      - { user: user:alice, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:sam, object: agent_definition:r1, assertions: { can_run: false } }
+      - { user: user:blk0, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:blk1, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:blk2, object: agent_definition:r1, assertions: { can_run: false } }
+      - { user: user:blk3, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:blk4, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:blk5, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:blk6, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:blk7, object: agent_definition:r1, assertions: { can_run: true } }
+      - { user: user:alice, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:sam, object: prompt:r1, assertions: { can_use: false } }
+      - { user: user:blk0, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:blk1, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:blk2, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:blk3, object: prompt:r1, assertions: { can_use: false } }
+      - { user: user:blk4, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:blk5, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:blk6, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:blk7, object: prompt:r1, assertions: { can_use: true } }
+      - { user: user:alice, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:sam, object: mcp_server:r1, assertions: { can_use: false } }
+      - { user: user:blk0, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:blk1, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:blk2, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:blk3, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:blk4, object: mcp_server:r1, assertions: { can_use: false } }
+      - { user: user:blk5, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:blk6, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:blk7, object: mcp_server:r1, assertions: { can_use: true } }
+      - { user: user:alice, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:sam, object: dataset:r1, assertions: { can_query: false } }
+      - { user: user:blk0, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:blk1, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:blk2, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:blk3, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:blk4, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:blk5, object: dataset:r1, assertions: { can_query: false } }
+      - { user: user:blk6, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:blk7, object: dataset:r1, assertions: { can_query: true } }
+      - { user: user:alice, object: document:r1, assertions: { can_read: true } }
+      - { user: user:sam, object: document:r1, assertions: { can_read: false } }
+      - { user: user:blk0, object: document:r1, assertions: { can_read: true } }
+      - { user: user:blk1, object: document:r1, assertions: { can_read: true } }
+      - { user: user:blk2, object: document:r1, assertions: { can_read: true } }
+      - { user: user:blk3, object: document:r1, assertions: { can_read: true } }
+      - { user: user:blk4, object: document:r1, assertions: { can_read: true } }
+      - { user: user:blk5, object: document:r1, assertions: { can_read: true } }
+      - { user: user:blk6, object: document:r1, assertions: { can_read: false } }
+      - { user: user:blk7, object: document:r1, assertions: { can_read: true } }
+      - { user: user:alice, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:sam, object: service_resource:r1, assertions: { can_call: false } }
+      - { user: user:blk0, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk1, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk2, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk3, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk4, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk5, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk6, object: service_resource:r1, assertions: { can_call: true } }
+      - { user: user:blk7, object: service_resource:r1, assertions: { can_call: false } }
+      - { user: user:carl, object: tool:ledger, assertions: { can_invoke: true } }
+
+  - name: every capability needs its own ceiling and cannot be raised by its holder
+    check:
+      - { user: user:rootadm, object: org_unit:acme, assertions: { can_grant_settings_admin: true } }
+      - { user: user:rootadm, object: org_unit:finance, assertions: { can_grant_settings_admin: true, can_set_settings_admin_ceiling: true } }
+      - { user: user:rootadm, object: org_unit:payroll, assertions: { can_grant_settings_admin: false, can_set_settings_admin_ceiling: true } }
+      - { user: user:rootadm, object: org_unit:software, assertions: { can_grant_settings_admin: false, can_set_settings_admin_ceiling: true } }
+      - { user: user:fin, object: org_unit:finance, assertions: { can_grant_settings_admin: true, can_set_settings_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:payroll, assertions: { can_grant_settings_admin: false, can_set_settings_admin_ceiling: true } }
+      - { user: user:fin, object: org_unit:software, assertions: { can_grant_settings_admin: false, can_set_settings_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:acme, assertions: { can_grant_settings_admin: false, can_set_settings_admin_ceiling: false } }
+      - { user: user:rootadm, object: org_unit:acme, assertions: { can_grant_app_admin: true } }
+      - { user: user:rootadm, object: org_unit:finance, assertions: { can_grant_app_admin: true, can_set_app_admin_ceiling: true } }
+      - { user: user:rootadm, object: org_unit:payroll, assertions: { can_grant_app_admin: false, can_set_app_admin_ceiling: true } }
+      - { user: user:rootadm, object: org_unit:software, assertions: { can_grant_app_admin: false, can_set_app_admin_ceiling: true } }
+      - { user: user:fin, object: org_unit:finance, assertions: { can_grant_app_admin: true, can_set_app_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:payroll, assertions: { can_grant_app_admin: false, can_set_app_admin_ceiling: true } }
+      - { user: user:fin, object: org_unit:software, assertions: { can_grant_app_admin: false, can_set_app_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:acme, assertions: { can_grant_app_admin: false, can_set_app_admin_ceiling: false } }
+      - { user: user:rootadm, object: org_unit:acme, assertions: { can_grant_budget_admin: true } }
+      - { user: user:rootadm, object: org_unit:finance, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: true } }
+      - { user: user:rootadm, object: org_unit:payroll, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: false } }
+      - { user: user:rootadm, object: org_unit:software, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: true } }
+      - { user: user:fin, object: org_unit:finance, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:payroll, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:software, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:acme, assertions: { can_grant_budget_admin: false, can_set_budget_admin_ceiling: false } }
+      - { user: user:rootadm, object: org_unit:acme, assertions: { can_grant_security_admin: true } }
+      - { user: user:rootadm, object: org_unit:finance, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: true } }
+      - { user: user:rootadm, object: org_unit:payroll, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: false } }
+      - { user: user:rootadm, object: org_unit:software, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: true } }
+      - { user: user:fin, object: org_unit:finance, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:payroll, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:software, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: false } }
+      - { user: user:fin, object: org_unit:acme, assertions: { can_grant_security_admin: false, can_set_security_admin_ceiling: false } }
+  - name: each principal type needs its own wildcards at the root
+    check:
+      - { user: service:svc, object: model:multi-llm, assertions: { can_invoke: true } }
+      - { user: agent:bot, object: model:multi-llm, assertions: { can_invoke: true } }
+      - { user: application:app, object: model:multi-llm, assertions: { can_invoke: true } }
+      - { user: agent:bot, object: model:finance-llm, assertions: { can_invoke: false } }
+      - { user: user:alice, object: model:multi-llm, assertions: { can_invoke: false } }
+  - name: a root without a ceiling cannot grant admin capabilities
+    check:
+      - { user: user:boss, object: org_unit:solo, assertions: { access_admin: true, can_grant_access_admin: false } }

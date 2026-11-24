@@ -11,7 +11,7 @@ An enterprise is one customer made of many organizations and teams (Finance, Sof
 - **Org units form a tree inside the tenant.**
   - Organizations and teams are one node type, `org_unit`, with a `kind` label.
   - Every node except the root has exactly one parent.
-  - Depth is capped per tenant: default 8, maximum 32. A write that would exceed the cap is rejected.
+  - Depth is capped per tenant: default 8, maximum 22. A write that would exceed the cap is rejected.
   - Applications and resources belong to exactly one node.
 - **Admin capabilities are a fixed set defined in the core model.**
 
@@ -42,5 +42,6 @@ An enterprise is one customer made of many organizations and teams (Finance, Sof
   - grant at an ancestor or sibling
   - grant to yourself beyond what you hold
   - raise a ceiling
-- Deep trees cost check latency, and OpenFGA bounds recursion depth. The 32 max is unverified (plan risk 1).
+- OpenFGA can't express these rules, so the authz API enforces them on write: `is_root` only on the tenant root, one `parent` per unit, one `unit` per resource, no `parent` cycles, and the depth cap. Agents can't be group members, so a group grant never gives an agent an admin capability. These write checks are owed in #50, with tests. The root's ceilings are written at tenant bootstrap by the platform operator; a root with no ceiling can't grant admin capabilities. Granting access to resources (`can_grant`) needs `access_admin` only. The model is not deployable until these write checks exist.
+- Deep trees cost check latency, and OpenFGA bounds recursion depth. OpenFGA rejects every check at depth 25 or more (`resolution_too_complex`), and group resolution spends the same budget. With a nested group (`group#member` of a group) in an allow-list at every node, depth 23 already fails, so the max is 22 and groups nest one level at most. Latency grows linearly with depth.
 - v1 has no second approver for sensitive grants.

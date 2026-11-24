@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "load": "tsx run.ts"
+    "load": "tsx run.ts",
+    "tenant-depth": "tsx tenant-depth.ts"
   },
   "devDependencies": {
+    "@openfga/syntax-transformer": "catalog:",
     "@types/autocannon": "7.12.7",
     "@types/node": "catalog:",
     "autocannon": "8.0.0",
