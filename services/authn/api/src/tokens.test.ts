@@ -5,6 +5,11 @@ import { calculateJwkThumbprint, SignJWT } from "jose";
 import type pg from "pg";
 import { migratedTestDatabase } from "./db/test-database.js";
 import {
+  createDelegation,
+  type NewDelegation,
+  revokeDelegation,
+} from "./delegations.js";
+import {
   exchangeToken,
   OAuthError,
   parseExchangeRequest,
@@ -445,26 +450,85 @@ test(
 );
 
 test(
-  "re-exchange refuses delegated tokens until delegation revocation can be checked",
+  "re-exchange of a delegated token needs a live delegation that matches the token",
   { skip },
   async () => {
-    const claims = { act: { sub: AGENT }, task_id: "task-1" };
-    const undelegated = await mint(claims);
-    await exchangeToken(
-      deps(),
-      { audience: "gateway" },
-      form({ subject_token: undelegated.token }),
-    );
-    const { token } = await mint({
-      ...claims,
-      delegation_id: `dlg_${"0".repeat(32)}`,
+    const limits = { maxLifetimeSeconds: 3600, maxDepth: 3 };
+    const delegate = (over: Partial<NewDelegation> = {}) =>
+      createDelegation(db, limits, {
+        tenantId: "acme",
+        initiatingPrincipalId: ALICE,
+        actorPrincipalId: AGENT,
+        applicationId: "helper",
+        taskId: "task-1",
+        allowedResources: ["model:finance-llm"],
+        allowedActions: ["model:invoke"],
+        expiresAt: new Date(Date.now() + 120_000),
+        policyVersion: "01HZ",
+        ...over,
+      });
+    const exchange = (
+      claims: { [K in keyof MintInput]?: MintInput[K] | undefined },
+    ) =>
+      mint(
+        Object.fromEntries(
+          Object.entries({
+            act: { sub: AGENT },
+            task_id: "task-1",
+            application_id: "helper",
+            ...claims,
+          }).filter(([, v]) => v !== undefined),
+        ),
+      ).then(({ token }) =>
+        exchangeToken(
+          deps(),
+          { audience: "gateway" },
+          form({ subject_token: token }),
+        ),
+      );
+    const { id } = await delegate();
+    const result = await exchange({ delegation_id: id });
+    const issued = await verifyToken(db, result.access_token, {
+      issuer: ISSUER,
+      audience: "data-api",
     });
+    assert.equal(issued.delegation_id, id);
+    assert.ok(issued.exp <= Math.floor(Date.now() / 1000) + 120);
+    for (const claims of [
+      { delegation_id: `dlg_${"0".repeat(32)}` },
+      { delegation_id: id, task_id: "task-2" },
+      { delegation_id: id, application_id: "other-app" },
+      { delegation_id: id, application_id: undefined },
+      { delegation_id: id, act: { sub: LEAVER } },
+      { delegation_id: id, sub: LEAVER },
+    ])
+      await oauthError(exchange(claims), "invalid_request");
+    await revokeDelegation(db, "acme", id);
+    await oauthError(exchange({ delegation_id: id }), "invalid_request");
+    const { id: expiring } = await delegate({ taskId: "task-e" });
+    await db.query(
+      "UPDATE delegations SET created_at = now() - interval '1 hour', expires_at = now() - interval '1 minute' WHERE id = $1",
+      [expiring],
+    );
     await oauthError(
-      exchangeToken(
-        deps(),
-        { audience: "gateway" },
-        form({ subject_token: token }),
-      ),
+      exchange({ delegation_id: expiring, task_id: "task-e" }),
+      "invalid_request",
+    );
+    const shared = new Date(Date.now() + 100_000);
+    const { id: parent } = await delegate({
+      taskId: "task-n",
+      expiresAt: shared,
+    });
+    const { id: child } = await delegate({
+      taskId: "task-n",
+      parentDelegationId: parent,
+      createdByPrincipalId: AGENT,
+      expiresAt: shared,
+    });
+    await exchange({ delegation_id: child, task_id: "task-n" });
+    await revokeDelegation(db, "acme", parent);
+    await oauthError(
+      exchange({ delegation_id: child, task_id: "task-n" }),
       "invalid_request",
     );
   },
