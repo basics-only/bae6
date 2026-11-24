@@ -1,0 +1,16 @@
+services:
+  authz-api: &tenant
+    environment:
+      BAE6_AUTHN_ISSUER: http://authn:8080
+      BAE6_AUTHN_JWKS_URI: http://authn:8080/.well-known/jwks.json
+      BAE6_AUTHN_URL: http://authn:8080
+      BAE6_AUTHN_PLACEMENT_SECRET_FILE: /run/secrets/authn/authn-placement-secret
+      BAE6_TENANT_ORGANIZATION: ${BAE6_TENANT_ORGANIZATION:-acme}
+      BAE6_TENANT_STORE_ID: ${BAE6_TENANT_STORE_ID:?run the bootstrap-tenant command and export its output}
+      BAE6_TENANT_MODEL_ID: ${BAE6_TENANT_MODEL_ID:?run the bootstrap-tenant command and export its output}
+    depends_on:
+      authn:
+        condition: service_healthy
+
+  authz-api-replica:
+    <<: *tenant
