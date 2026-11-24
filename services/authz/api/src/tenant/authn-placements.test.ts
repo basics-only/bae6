@@ -38,6 +38,7 @@ test("a placement is pushed to authn with the placement secret", async () => {
     p.place({
       tenantId: "acme",
       principalId: ALICE,
+      principalType: "user",
       orgPath: ["acme", "finance"],
     }),
   );
@@ -46,7 +47,11 @@ test("a placement is pushed to authn with the placement secret", async () => {
       method: "PUT",
       url: `/admin/principals/${ALICE}/org-path`,
       auth: `Bearer ${"s".repeat(40)}`,
-      body: JSON.stringify({ tenantId: "acme", orgPath: ["acme", "finance"] }),
+      body: JSON.stringify({
+        tenantId: "acme",
+        principalType: "user",
+        orgPath: ["acme", "finance"],
+      }),
     },
   ]);
 });
@@ -54,7 +59,12 @@ test("a placement is pushed to authn with the placement secret", async () => {
 test("an authn refusal is raised with its status", async () => {
   await withAuthn(409, async (p) => {
     await assert.rejects(
-      p.place({ tenantId: "acme", principalId: ALICE, orgPath: ["acme"] }),
+      p.place({
+        tenantId: "acme",
+        principalId: ALICE,
+        principalType: "user",
+        orgPath: ["acme"],
+      }),
       { status: 409 },
     );
   });

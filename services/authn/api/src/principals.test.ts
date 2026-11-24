@@ -535,6 +535,7 @@ test(
       setPrincipalOrgPath(db, {
         tenantId: "acme",
         principalId: id,
+        principalType: "user",
         orgPath,
         actor: "authz",
       });
@@ -574,6 +575,7 @@ test(
       setPrincipalOrgPath(db, {
         tenantId: "globex",
         principalId,
+        principalType: "user",
         orgPath: ["globex"],
         actor: "authz",
       }),

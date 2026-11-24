@@ -6,6 +6,7 @@ export function authnPlacements(config: { baseUrl: string; secret: string }) {
     async place(input: {
       tenantId: string;
       principalId: string;
+      principalType: string;
       orgPath: string[];
     }) {
       const res = await fetch(
@@ -21,6 +22,7 @@ export function authnPlacements(config: { baseUrl: string; secret: string }) {
           },
           body: JSON.stringify({
             tenantId: input.tenantId,
+            principalType: input.principalType,
             orgPath: input.orgPath,
           }),
           signal: AbortSignal.timeout(TIMEOUT_MS),

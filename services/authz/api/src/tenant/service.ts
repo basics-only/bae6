@@ -174,6 +174,7 @@ export function createTenantService(deps: {
     place(input: {
       tenantId: string;
       principalId: string;
+      principalType: string;
       orgPath: string[];
     }): Promise<unknown>;
   };
@@ -629,8 +630,8 @@ export function createTenantService(deps: {
         { subject, unit: node },
         requestId,
         async () => {
-          const orgPath = await pathOf(unit);
           await requireRelation(actor, "access_admin", node);
+          const orgPath = await pathOf(unit);
           const current = await read({
             user: subject,
             relation: "placed",
@@ -647,7 +648,12 @@ export function createTenantService(deps: {
             await requireRelation(actor, "access_admin", old.object);
           }
           await placements
-            .place({ tenantId: organization, principalId, orgPath })
+            .place({
+              tenantId: organization,
+              principalId,
+              principalType: match[1] as string,
+              orgPath,
+            })
             .catch((err: { status?: number }) => {
               if (
                 err.status === 400 ||
