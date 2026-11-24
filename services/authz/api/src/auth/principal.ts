@@ -1,3 +1,5 @@
+import type { directExecutionContext } from "./execution-context.js";
+
 /** An organization ID (the tenant, bae6-contracts ADR-0002); also an OpenFGA object ID. */
 export const ORGANIZATION_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
@@ -15,6 +17,7 @@ export interface Principal {
   issuer?: string;
   /** Set when the token was minted for administration (the issuer's `adminAudience`). */
   admin?: true;
+  executionContext?: NonNullable<ReturnType<typeof directExecutionContext>>;
 }
 
 /**

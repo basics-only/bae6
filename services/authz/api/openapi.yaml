@@ -436,6 +436,9 @@ paths:
                 resourceId:
                   type: string
                   pattern: "^[A-Za-z0-9_@.+|-]{1,256}$"
+                includeExecutionContext:
+                  type: boolean
+                  description: Return the signed token's execution context with an allow decision.
       responses:
         "200":
           description: The decision.
@@ -447,6 +450,8 @@ paths:
                 properties:
                   allowed:
                     type: boolean
+                  executionContext:
+                    $ref: "../../../contracts/schemas/execution-context.json"
         "400":
           $ref: "#/components/responses/Error"
         "401":

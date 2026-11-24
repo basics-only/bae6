@@ -5,6 +5,21 @@ export interface AuthzOptions extends ClientOptions {
   application: string;
 }
 
+export interface ExecutionContext {
+  tenantId: string;
+  orgPath: readonly string[];
+  principalId: string;
+  principalType: string;
+  actorId: string;
+  requestId: string;
+  applicationId?: string;
+  sessionId?: string;
+  taskId?: string;
+  delegationId?: string;
+  traceId?: string;
+  costCenterId?: string;
+}
+
 export interface Check {
   action: string;
   resource: string;
@@ -300,6 +315,47 @@ export class Authz {
     if (!isObject(parsed) || typeof parsed.allowed !== "boolean")
       throw invalidResponse();
     return parsed.allowed;
+  }
+
+  async tenantCheckWithContext(input: {
+    resourceType: string;
+    resourceId: string;
+  }): Promise<ExecutionContext | undefined> {
+    const parsed = await this.#http.json("POST", "/v1/tenant/check", {
+      body: { ...input, includeExecutionContext: true },
+    });
+    if (!isObject(parsed) || typeof parsed.allowed !== "boolean")
+      throw invalidResponse();
+    if (!parsed.allowed) return undefined;
+    const context = parsed.executionContext;
+    if (
+      !isObject(context) ||
+      ![
+        "tenantId",
+        "principalId",
+        "principalType",
+        "actorId",
+        "requestId",
+      ].every((field) => typeof context[field] === "string") ||
+      !Array.isArray(context.orgPath) ||
+      context.orgPath.length < 1 ||
+      context.orgPath.length > 32 ||
+      context.orgPath[0] !== context.tenantId ||
+      !context.orgPath.every((unit) => typeof unit === "string") ||
+      ![
+        "applicationId",
+        "sessionId",
+        "taskId",
+        "delegationId",
+        "traceId",
+        "costCenterId",
+      ].every(
+        (field) =>
+          context[field] === undefined || typeof context[field] === "string",
+      )
+    )
+      throw invalidResponse();
+    return context as unknown as ExecutionContext;
   }
 
   async #post(

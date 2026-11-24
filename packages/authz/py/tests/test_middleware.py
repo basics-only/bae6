@@ -3,6 +3,7 @@ import json
 
 import httpx
 import pytest
+from bae6_authz import ExecutionContext
 from bae6_authz.middleware import (
     ExchangedToken,
     TenantGuard,
@@ -33,12 +34,13 @@ class Fakes:
             raise self.exchange_error
         return ExchangedToken(f"authz-for-{subject_token}", self.expires_in)
 
-    def guard(self) -> TenantGuard:
+    def guard(self, *, include_execution_context: bool = False) -> TenantGuard:
         return TenantGuard(
             "http://authz.test",
             "app",
             self.exchange,
             transport=httpx.MockTransport(self.handler),
+            include_execution_context=include_execution_context,
         )
 
 
@@ -158,3 +160,40 @@ def test_an_exchanged_token_about_to_expire_is_exchanged_again_on_every_request(
 
     asyncio.run(go())
     assert fakes.exchanges == ["t1", "t1"]
+
+
+def test_fastapi_dependency_returns_context_from_an_allowed_check() -> None:
+    fakes = Fakes()
+    identity = "prn_" + "a" * 32
+    fakes.answer = httpx.Response(
+        200,
+        json={
+            "allowed": True,
+            "executionContext": {
+                "tenantId": "acme",
+                "orgPath": ["acme"],
+                "principalId": identity,
+                "principalType": "user",
+                "actorId": identity,
+                "requestId": "signed-request",
+            },
+        },
+    )
+    guard = fakes.guard(include_execution_context=True)
+    dependency = fastapi_dependency(guard, lambda request: RESOURCE)
+    app = FastAPI()
+
+    @app.get("/")
+    async def route(context: ExecutionContext = Depends(dependency)) -> dict[str, str]:
+        return {"requestId": context.request_id}
+
+    with TestClient(app) as client:
+        headers = {"Authorization": "Bearer caller", "X-Request-Id": "forged"}
+        assert client.get("/", headers=headers).json() == {"requestId": "signed-request"}
+        assert fakes.checked[-1][1] == {
+            "resourceType": "model",
+            "resourceId": "gpt",
+            "includeExecutionContext": True,
+        }
+        fakes.answer = httpx.Response(200, json={"allowed": True})
+        assert client.get("/", headers=headers).status_code == 503
