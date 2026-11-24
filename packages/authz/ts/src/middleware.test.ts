@@ -9,6 +9,7 @@ let baseUrl: string;
 let answer: { status: number; body: unknown };
 let exchanges: string[];
 let checked: { authorization: string | undefined; body: unknown }[];
+let shortLived = false;
 let exchangeFails: { status?: number } | undefined;
 
 before(async () => {
@@ -39,6 +40,7 @@ beforeEach(() => {
   exchanges = [];
   checked = [];
   exchangeFails = undefined;
+  shortLived = false;
 });
 
 const guard = () =>
@@ -50,6 +52,8 @@ const guard = () =>
     } as never,
     async exchange(subjectToken) {
       exchanges.push(subjectToken);
+      if (shortLived)
+        return { accessToken: `authz-for-${subjectToken}`, expiresIn: 30 };
       if (exchangeFails) throw Object.assign(new Error("x"), exchangeFails);
       return { accessToken: `authz-for-${subjectToken}`, expiresIn: 300 };
     },
@@ -176,4 +180,23 @@ test("fastify hook returns on allow and replies with the denial otherwise", asyn
   answer = { status: 200, body: { allowed: false } };
   await hook({ headers: { authorization: "Bearer t2" } }, reply);
   assert.equal(sent[0], 403);
+});
+
+test("a reused exchanged token never reuses a decision: revocation is seen on the next request", async () => {
+  const g = guard();
+  assert.equal((await g("Bearer t1", resource)).allowed, true);
+  answer = { status: 200, body: { allowed: false } };
+  assert.equal((await g("Bearer t1", resource)).allowed, false);
+  answer = { status: 200, body: { allowed: true } };
+  assert.equal((await g("Bearer t1", resource)).allowed, true);
+  assert.equal(exchanges.length, 1);
+  assert.equal(checked.length, 3);
+});
+
+test("an exchanged token about to expire is exchanged again on every request", async () => {
+  shortLived = true;
+  const g = guard();
+  await g("Bearer t1", resource);
+  await g("Bearer t1", resource);
+  assert.deepEqual(exchanges, ["t1", "t1"]);
 });

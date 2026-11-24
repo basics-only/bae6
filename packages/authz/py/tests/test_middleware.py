@@ -21,6 +21,7 @@ class Fakes:
         self.exchanges: list[str] = []
         self.checked: list[tuple[str, object]] = []
         self.exchange_error: Exception | None = None
+        self.expires_in = 300
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.checked.append((request.headers["authorization"], json.loads(request.content)))
@@ -30,7 +31,7 @@ class Fakes:
         self.exchanges.append(subject_token)
         if self.exchange_error:
             raise self.exchange_error
-        return ExchangedToken(f"authz-for-{subject_token}", 300)
+        return ExchangedToken(f"authz-for-{subject_token}", self.expires_in)
 
     def guard(self) -> TenantGuard:
         return TenantGuard(
@@ -128,3 +129,32 @@ def test_fastapi_dependency_lets_allowed_requests_in_and_answers_denials() -> No
     unauthenticated = client.get("/x")
     assert unauthenticated.status_code == 401
     assert unauthenticated.headers["www-authenticate"] == "Bearer"
+
+
+def test_a_reused_exchanged_token_never_reuses_a_decision() -> None:
+    fakes = Fakes()
+    guard = fakes.guard()
+
+    async def go() -> list[bool]:
+        results = [(await guard("Bearer t1", RESOURCE)).allowed]
+        fakes.answer = httpx.Response(200, json={"allowed": False})
+        results.append((await guard("Bearer t1", RESOURCE)).allowed)
+        fakes.answer = httpx.Response(200, json={"allowed": True})
+        results.append((await guard("Bearer t1", RESOURCE)).allowed)
+        return results
+
+    assert asyncio.run(go()) == [True, False, True]
+    assert len(fakes.exchanges) == 1 and len(fakes.checked) == 3
+
+
+def test_an_exchanged_token_about_to_expire_is_exchanged_again_on_every_request() -> None:
+    fakes = Fakes()
+    fakes.expires_in = 30
+    guard = fakes.guard()
+
+    async def go() -> None:
+        await guard("Bearer t1", RESOURCE)
+        await guard("Bearer t1", RESOURCE)
+
+    asyncio.run(go())
+    assert fakes.exchanges == ["t1", "t1"]
