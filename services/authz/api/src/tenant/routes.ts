@@ -2,9 +2,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { TENANT_SCOPE } from "../auth/bae6.js";
 import type { Principal } from "../auth/index.js";
 import { HttpError, readJson, requestIdOf, send } from "../http.js";
-import type { TenantService } from "./service.js";
+import type { ResourceType, TenantService } from "./service.js";
 
 const PLACEMENT = /^\/v1\/tenant\/principals\/(prn_[0-9a-f]{32})\/unit$/;
+const RESOURCE_PLACEMENT = "/v1/tenant/resources/unit";
 const CHECK = "/v1/tenant/check";
 const EXT_AUTHZ = "/v1/tenant/ext-authz";
 const RESOURCE_HEADER = "bae6-resource";
@@ -25,7 +26,7 @@ async function readObject(req: IncomingMessage) {
 export function tenantRoutes(
   serviceFor: (
     organization: string,
-  ) => Pick<TenantService, "placePrincipal" | "check">,
+  ) => Pick<TenantService, "placePrincipal" | "placeResource" | "check">,
 ) {
   return async (
     req: IncomingMessage,
@@ -55,7 +56,8 @@ export function tenantRoutes(
     }
     const principalId = PLACEMENT.exec(url.pathname)?.[1];
     const isCheck = url.pathname === CHECK;
-    if (!principalId && !isCheck) return false;
+    const isResourcePlacement = url.pathname === RESOURCE_PLACEMENT;
+    if (!principalId && !isCheck && !isResourcePlacement) return false;
     const method = isCheck ? "POST" : "PUT";
     if (req.method !== method) {
       res.setHeader("allow", method);
@@ -75,6 +77,24 @@ export function tenantRoutes(
         resourceId,
       );
       send(res, 200, { allowed });
+      return true;
+    }
+    if (isResourcePlacement) {
+      const { resourceType, resourceId, unit } = body;
+      if (
+        typeof resourceType !== "string" ||
+        typeof resourceId !== "string" ||
+        typeof unit !== "string"
+      )
+        throw invalidRequest("resourceType, resourceId and unit are required.");
+      const auditEventId = await service.placeResource(
+        principal.subject,
+        resourceType as ResourceType,
+        resourceId,
+        unit,
+        requestIdOf(res),
+      );
+      send(res, 200, { resourceType, resourceId, unit, auditEventId });
       return true;
     }
     const { principalType, unit } = body;
