@@ -27,4 +27,15 @@ A revoked key cannot be unretired.
 
 ## KMS-backed signing
 
-`kmsSigner(client)` in `keys.ts` takes a client with `publicKey()` (SPKI DER) and `sign(message)` (DER ECDSA over SHA-256 of the message) and returns an ES256 `Signer`. The key must be P-256. The `kid` matches what `localSigner` gives for the same key. The service does not yet construct KMS signers from configuration.
+`BAE6_AUTHN_SIGNING_KEYS` lists PEM filenames or Google Cloud KMS references.
+Use a reference such as
+`gcp-kms:projects/example/locations/us-central1/keyRings/authn/cryptoKeys/token/cryptoKeyVersions/1`
+in both the key list and `BAE6_AUTHN_ACTIVE_SIGNING_KEY` when selecting it.
+Use `EC_SIGN_P256_SHA256` and grant the deployment's Google metadata service
+identity `cloudkms.cryptoKeyVersions.viewPublicKey` and
+`cloudkms.cryptoKeyVersions.useToSign` on the configured keys.
+
+After emergency revocation, disable the compromised KMS key and purge cached
+JWKS wherever possible. If no eligible replacement exists and compromise
+requires immediate containment, disable signing and block the compromised
+`kid` at verifiers until a replacement is available.
