@@ -398,6 +398,43 @@ paths:
           $ref: "#/components/responses/Error"
         "503":
           $ref: "#/components/responses/Error"
+  /v1/tenant/ext-authz/{path}:
+    get:
+      tags: [tenant]
+      operationId: tenantExtAuthz
+      summary: Gateway external authorization for a tenant resource
+      description: |
+        For HTTP ext_authz filters (Envoy and similar). The same decision as `tenantCheck`,
+        for the token's own principal, with the resource named by the gateway in the
+        `bae6-resource` header (`<type>:<id>`) rather than a body. Any method and any
+        sub-path is accepted so a gateway can forward the original request unchanged. The
+        gateway must set the header itself and overwrite any client-supplied value. `200`
+        with an empty body means allow; every other status is a deny.
+      security:
+        - bae6Token: [tenant]
+      parameters:
+        - name: path
+          in: path
+          required: false
+          schema:
+            type: string
+        - name: bae6-resource
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z_]{1,32}:[^:\\s]{1,256}$"
+      responses:
+        "200":
+          description: Allowed.
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
   /v1/tenant/principals/{principalId}/unit:
     put:
       tags: [tenant]

@@ -146,3 +146,39 @@ test("a check refuses missing scope, bad requests and wrong methods, and reports
   assert.equal(get.status, 405);
   assert.equal(get.headers.get("allow"), "POST");
 });
+
+const extAuthz = (resource: string | undefined, path = "", method = "GET") =>
+  fetch(`${base}/v1/tenant/ext-authz${path}`, {
+    method,
+    headers: {
+      authorization: "Bearer x",
+      ...(resource === undefined ? {} : { "bae6-resource": resource }),
+    },
+  });
+
+test("ext-authz answers an empty 200 for an allow on any method and path under it, and denies otherwise", async () => {
+  calls = [];
+  who = tenantAdmin;
+  const allowed = await extAuthz("model:yes", "/v1/chat/completions", "POST");
+  assert.equal(allowed.status, 200);
+  assert.equal(await allowed.text(), "");
+  assert.equal((await extAuthz("model:no")).status, 403);
+  assert.equal((await extAuthz("model:down")).status, 503);
+  assert.deepEqual(calls[0], ["acme", tenantAdmin.subject, "model", "yes"]);
+});
+
+test("ext-authz refuses a missing or malformed resource header and a principal without the tenant scope", async () => {
+  who = tenantAdmin;
+  for (const header of [
+    undefined,
+    "",
+    "model",
+    "model:",
+    ":yes",
+    "a:b:c",
+    "model: x",
+  ])
+    assert.equal((await extAuthz(header)).status, 400);
+  who = workload;
+  assert.equal((await extAuthz("model:yes")).status, 403);
+});
