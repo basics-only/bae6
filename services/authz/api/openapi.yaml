@@ -349,6 +349,63 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
+  /v1/tenant/resources/unit:
+    put:
+      tags: [tenant]
+      summary: Register a resource in an org unit
+      operationId: placeTenantResource
+      description: >
+        Requires a bae6 tenant token and app_admin on the target unit.
+        Repeating the same placement is safe. A placement in another unit returns
+        409. After durable registration, a projection outage returns 503 and the
+        service retries projection in the background.
+      security:
+        - bae6Token: [tenant]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resourceType, resourceId, unit]
+              properties:
+                resourceType:
+                  type: string
+                  enum: [application, api, model, agent_definition, prompt, mcp_server, tool, dataset, document, service_resource]
+                resourceId:
+                  type: string
+                  pattern: '^[A-Za-z0-9_@.+|-]{1,256}$'
+                unit:
+                  type: string
+                  pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+      responses:
+        "200":
+          description: The resource placement is registered and projected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resourceType, resourceId, unit, auditEventId]
+                properties:
+                  resourceType:
+                    type: string
+                  resourceId:
+                    type: string
+                  unit:
+                    type: string
+                  auditEventId:
+                    type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /v1/tenant/check:
     post:
       tags: [tenant]

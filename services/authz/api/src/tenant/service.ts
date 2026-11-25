@@ -210,7 +210,11 @@ export function createTenantService(deps: {
 
   const read = async (key: Partial<Tuple>) => {
     const page = await fga(
-      () => client.read(key, { pageSize: 100 }),
+      () =>
+        client.read(key, {
+          pageSize: 100,
+          consistency: ConsistencyPreference.HigherConsistency,
+        }),
       unavailable,
     );
     if (page.continuation_token) {
@@ -268,7 +272,7 @@ export function createTenantService(deps: {
 
   async function transact(
     event: Parameters<typeof recordAudit>[1],
-    run: () => Promise<void>,
+    run: (db: pg.PoolClient) => Promise<void>,
   ): Promise<string> {
     const db = await pool.connect();
     let broken = false;
@@ -280,7 +284,7 @@ export function createTenantService(deps: {
         `tenant:${organization}`,
       ]);
       const id = await recordAudit(db, event);
-      await deadline.run(Date.now() + TRANSACTION_BUDGET_MS, run);
+      await deadline.run(Date.now() + TRANSACTION_BUDGET_MS, () => run(db));
       await db.query("COMMIT").catch((err) => {
         if (err instanceof Error) ambiguous.add(err);
         throw err;
@@ -309,7 +313,7 @@ export function createTenantService(deps: {
     action: string,
     detail: Record<string, unknown>,
     requestId: string | undefined,
-    run: () => Promise<void>,
+    run: (db: pg.PoolClient) => Promise<void>,
   ): Promise<string> {
     if (!ACTOR.test(actor)) throw forbidden("Unknown actor.");
     const event = { actor, organization, action, requestId, detail };
@@ -415,7 +419,71 @@ export function createTenantService(deps: {
     );
   }
 
+  async function syncResource(resource?: string): Promise<boolean> {
+    const db = await pool.connect();
+    let broken = false;
+    let failure: unknown;
+    try {
+      await db.query("BEGIN");
+      await db.query(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT_MS}'`);
+      await db.query(`SET LOCAL statement_timeout = '${OPENFGA_TIMEOUT_MS}'`);
+      const filter =
+        resource === undefined ? "o.due_at <= now()" : "o.resource = $2";
+      const skipLocked = resource === undefined ? "SKIP LOCKED" : "";
+      const {
+        rows: [row],
+      } = await db.query<{ resource: string; unit: string }>(
+        `SELECT o.resource, r.unit FROM tenant_resource_outbox o
+          JOIN tenant_resources r USING (organization_id, resource)
+          WHERE o.organization_id = $1 AND ${filter}
+          ORDER BY o.due_at, o.resource LIMIT 1 FOR UPDATE OF o ${skipLocked}`,
+        resource === undefined ? [organization] : [organization, resource],
+      );
+      if (!row) {
+        if (resource !== undefined) throw unavailable();
+        await db.query("COMMIT");
+        return false;
+      }
+
+      try {
+        await deadline.run(Date.now() + TRANSACTION_BUDGET_MS, async () => {
+          const desired = {
+            user: row.unit,
+            relation: "unit",
+            object: row.resource,
+          };
+          const current = (
+            await read({ relation: "unit", object: row.resource })
+          ).map((tuple) => tuple.key);
+          const missing = !current.some((tuple) => tuple.user === row.unit);
+          const stale = current.filter((tuple) => tuple.user !== row.unit);
+          if (missing || stale.length > 0)
+            await rewrite(missing ? [desired] : [], stale);
+        });
+      } catch (err) {
+        failure = err;
+      }
+      await db.query(
+        `UPDATE tenant_resource_outbox SET due_at = clock_timestamp() + make_interval(secs => $3)
+         WHERE organization_id = $1 AND resource = $2`,
+        [organization, row.resource, failure === undefined ? 300 : 15],
+      );
+      await db.query("COMMIT");
+    } catch (err) {
+      await db.query("ROLLBACK").catch(() => {
+        broken = true;
+      });
+      throw err;
+    } finally {
+      db.release(broken);
+    }
+    if (failure !== undefined) throw failure;
+    return true;
+  }
+
   return {
+    reconcileResource: () => syncResource(),
+
     async bootstrap(
       operator: string,
       root: string,
@@ -702,19 +770,46 @@ export function createTenantService(deps: {
       if (!RESOURCE_ID.test(id)) throw invalid("Invalid resource id.");
       const node = unitOf(unit);
       const object = `${type}:${id}`;
-      return audited(
+      const eventId = await audited(
         actor,
         "tenant.resource.place",
         { resource: object, unit: node },
         requestId,
-        async () => {
+        async (db) => {
           await requireRelation(actor, "app_admin", node);
-          if ((await read({ object, relation: "unit" })).length > 0) {
-            throw conflict("The resource already belongs to a unit.");
+          const {
+            rows: [registered],
+          } = await db.query<{ unit: string }>(
+            "SELECT unit FROM tenant_resources WHERE organization_id = $1 AND resource = $2",
+            [organization, object],
+          );
+          if (registered) {
+            if (registered.unit !== node)
+              throw conflict("The resource already belongs to a unit.");
+            return;
           }
-          await write([{ user: node, relation: "unit", object }]);
+          const current = await read({ object, relation: "unit" });
+          if (current.some((tuple) => tuple.key.user !== node))
+            throw conflict("The resource already belongs to a unit.");
+          await db.query(
+            "INSERT INTO tenant_resources (organization_id, resource, unit) VALUES ($1, $2, $3)",
+            [organization, object, node],
+          );
+          await db.query(
+            "INSERT INTO tenant_resource_outbox (organization_id, resource) VALUES ($1, $2)",
+            [organization, object],
+          );
         },
       );
+      await syncResource(object).catch((err) => {
+        if (err instanceof HttpError && err.status !== 503) throw err;
+        throw new HttpError(
+          503,
+          "placement_unavailable",
+          "The resource was registered but placement is pending. Repeat the request.",
+        );
+      });
+      return eventId;
     },
   };
 }

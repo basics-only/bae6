@@ -31,6 +31,10 @@ before(async () => {
           throw new HttpError(404, "not_found", "Unknown unit.");
         return undefined as never;
       },
+      placeResource: async (...args: unknown[]) => {
+        calls.push([organization, ...args.slice(0, 4)]);
+        return "42";
+      },
       check: async (subject: string, type: string, id: string) => {
         calls.push([organization, subject, type, id]);
         if (id === "down")
@@ -181,4 +185,31 @@ test("ext-authz refuses a missing or malformed resource header and a principal w
     assert.equal((await extAuthz(header)).status, 400);
   who = workload;
   assert.equal((await extAuthz("model:yes")).status, 403);
+});
+
+test("resource placement uses the authenticated tenant and actor", async () => {
+  calls = [];
+  const input = { resourceType: "model", resourceId: "llm", unit: "finance" };
+  const register = () =>
+    fetch(`${base}/v1/tenant/resources/unit`, {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer x",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ...input,
+        organization: "other",
+        actor: "user:other",
+      }),
+    });
+  who = workload;
+  assert.equal((await register()).status, 403);
+  who = tenantAdmin;
+  const result = await register();
+  assert.equal(result.status, 200);
+  assert.deepEqual(await result.json(), { ...input, auditEventId: "42" });
+  assert.deepEqual(calls, [
+    ["acme", tenantAdmin.subject, "model", "llm", "finance"],
+  ]);
 });
