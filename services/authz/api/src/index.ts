@@ -221,11 +221,18 @@ let reconcileTimer: NodeJS.Timeout | undefined;
 let stopReconciliation = false;
 if (tenantService) {
   const reconcile = async () => {
-    await tenantService.reconcileResource().catch(() => {
+    try {
+      // shortcut: 100 rows/s per replica covers ~30k resources at the 300s recheck; batch the claim beyond that.
+      for (let i = 0; i < 100 && !stopReconciliation; i++)
+        if (!(await tenantService.reconcileResource())) break;
+    } catch (err) {
       console.error(
-        JSON.stringify({ msg: "tenant resource reconciliation failed" }),
+        JSON.stringify({
+          msg: "tenant resource reconciliation failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
       );
-    });
+    }
     if (!stopReconciliation)
       reconcileTimer = setTimeout(reconcile, 1000).unref();
   };

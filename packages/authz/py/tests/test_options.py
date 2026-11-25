@@ -88,7 +88,6 @@ def test_tenant_check_posts_the_resource_and_raises_instead_of_denying_quietly()
     )
 
 
-
 def test_place_tenant_resource_puts_the_placement_and_returns_its_audit_id() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "PUT"

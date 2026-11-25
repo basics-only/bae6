@@ -284,6 +284,24 @@ test(
 );
 
 test(
+  "reconciliation reports each due resource until none are left, so a tick can drain a backlog",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, pool }) => {
+      await svc.placeResource(ROOTADM, "model", "a", "acme");
+      await svc.placeResource(ROOTADM, "model", "b", "acme");
+      await pool.query(
+        "UPDATE tenant_resource_outbox SET due_at = now() WHERE organization_id = $1",
+        ["acme"],
+      );
+      assert.equal(await svc.reconcileResource(), true);
+      assert.equal(await svc.reconcileResource(), true);
+      assert.equal(await svc.reconcileResource(), false);
+    });
+  },
+);
+
+test(
   "rejects unknown resource types, capabilities and actions",
   opts,
   async () => {

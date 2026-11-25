@@ -351,6 +351,7 @@ paths:
           $ref: "#/components/responses/Error"
   /v1/tenant/resources/unit:
     put:
+      tags: [tenant]
       summary: Register a resource in an org unit
       operationId: placeTenantResource
       description: >
@@ -369,6 +370,7 @@ paths:
               required: [resourceType, resourceId, unit]
               properties:
                 resourceType:
+                  type: string
                   enum: [application, api, model, agent_definition, prompt, mcp_server, tool, dataset, document, service_resource]
                 resourceId:
                   type: string
@@ -394,15 +396,15 @@ paths:
                   auditEventId:
                     type: string
         "400":
-          description: Invalid placement.
+          $ref: "#/components/responses/Error"
         "401":
-          description: Missing or invalid bearer token.
+          $ref: "#/components/responses/Error"
         "403":
-          description: Missing tenant scope or app_admin.
+          $ref: "#/components/responses/Error"
         "409":
-          description: Resource belongs to another unit.
+          $ref: "#/components/responses/Error"
         "503":
-          description: A dependency is unavailable. Registration may already be durable.
+          $ref: "#/components/responses/Error"
 
   /v1/tenant/check:
     post:

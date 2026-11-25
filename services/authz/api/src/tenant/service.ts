@@ -419,7 +419,7 @@ export function createTenantService(deps: {
     );
   }
 
-  async function syncResource(resource?: string): Promise<void> {
+  async function syncResource(resource?: string): Promise<boolean> {
     const db = await pool.connect();
     let broken = false;
     let failure: unknown;
@@ -442,7 +442,7 @@ export function createTenantService(deps: {
       if (!row) {
         if (resource !== undefined) throw unavailable();
         await db.query("COMMIT");
-        return;
+        return false;
       }
 
       try {
@@ -478,6 +478,7 @@ export function createTenantService(deps: {
       db.release(broken);
     }
     if (failure !== undefined) throw failure;
+    return true;
   }
 
   return {
@@ -800,7 +801,8 @@ export function createTenantService(deps: {
           );
         },
       );
-      await syncResource(object).catch(() => {
+      await syncResource(object).catch((err) => {
+        if (err instanceof HttpError && err.status !== 503) throw err;
         throw new HttpError(
           503,
           "placement_unavailable",
