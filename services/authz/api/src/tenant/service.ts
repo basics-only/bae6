@@ -113,6 +113,18 @@ const CHECK_RELATION: Record<(typeof RESOURCE_TYPES)[number], string> = {
   tool: "can_invoke",
   service_resource: "can_call",
 };
+const ACCESS_RELATION: Record<(typeof RESOURCE_TYPES)[number], string> = {
+  application: "user",
+  api: "caller",
+  model: "invoker",
+  agent_definition: "runner",
+  prompt: "user",
+  mcp_server: "user",
+  dataset: "querier",
+  document: "reader",
+  tool: "invoker",
+  service_resource: "caller",
+};
 const PRINCIPAL_TYPES = ["user", "service", "agent", "application"] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -134,6 +146,9 @@ const GUARDRAIL_SUBJECT = new RegExp(
   `^((${PRINCIPAL_TYPES.join("|")}):(${ID}|\\*)|group:${ID}#member)$`,
 );
 const RESOURCE_ID = new RegExp(`^${ID}$`);
+const ACCESS_SUBJECT = new RegExp(
+  `^((${PRINCIPAL_TYPES.join("|")}):${ID}|group:${ID}#member)$`,
+);
 const ACTOR = new RegExp(`^(user|service):${ID}$`);
 
 const invalid = (message: string) =>
@@ -745,6 +760,34 @@ export function createTenantService(deps: {
               old ? [old] : [],
             );
           }
+        },
+      );
+    },
+
+    async setAccess(
+      actor: string,
+      type: ResourceType,
+      id: string,
+      subject: string,
+      enable: boolean,
+      requestId?: string,
+    ) {
+      oneOf(RESOURCE_TYPES, type, "resource type");
+      if (!RESOURCE_ID.test(id)) throw invalid("Invalid resource id.");
+      if (!ACCESS_SUBJECT.test(subject)) throw invalid("Invalid subject.");
+      const tuple = {
+        user: subject,
+        relation: ACCESS_RELATION[type],
+        object: `${type}:${id}`,
+      };
+      return audited(
+        actor,
+        enable ? "tenant.access.grant" : "tenant.access.revoke",
+        { resource: tuple.object, grantee: subject },
+        requestId,
+        async () => {
+          await requireRelation(actor, "can_grant", tuple.object);
+          await (enable ? write([tuple]) : remove([tuple]));
         },
       );
     },

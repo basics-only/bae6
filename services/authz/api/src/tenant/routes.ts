@@ -2,9 +2,20 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { TENANT_SCOPE } from "../auth/bae6.js";
 import type { Principal } from "../auth/index.js";
 import { HttpError, readJson, requestIdOf, send } from "../http.js";
-import type { ResourceType, TenantService } from "./service.js";
+import type {
+  Action,
+  Capability,
+  GuardrailList,
+  ResourceType,
+  TenantService,
+} from "./service.js";
 
 const PLACEMENT = /^\/v1\/tenant\/principals\/(prn_[0-9a-f]{32})\/unit$/;
+const UNITS = "/v1/tenant/units";
+const UNIT_SETTING =
+  /^\/v1\/tenant\/units\/([^/]+)\/(admins|ceilings|guardrails)\/(.+)$/;
+const RESOURCE_ACCESS =
+  /^\/v1\/tenant\/resources\/([^/]+)\/([^/]+)\/access\/([^/]+)$/;
 const RESOURCE_PLACEMENT = "/v1/tenant/resources/unit";
 const CHECK = "/v1/tenant/check";
 const EXT_AUTHZ = "/v1/tenant/ext-authz";
@@ -23,10 +34,29 @@ async function readObject(req: IncomingMessage) {
   return body as Record<string, unknown>;
 }
 
+const decode = (segment: string) => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw invalidRequest("Malformed path.");
+  }
+};
+
 export function tenantRoutes(
   serviceFor: (
     organization: string,
-  ) => Pick<TenantService, "placePrincipal" | "placeResource" | "check">,
+  ) => Pick<
+    TenantService,
+    | "placePrincipal"
+    | "placeResource"
+    | "check"
+    | "createUnit"
+    | "grant"
+    | "revoke"
+    | "setCeiling"
+    | "setGuardrail"
+    | "setAccess"
+  >,
 ) {
   return async (
     req: IncomingMessage,
@@ -52,6 +82,96 @@ export function tenantRoutes(
       );
       if (!allowed) throw new HttpError(403, "forbidden", "Not permitted.");
       res.writeHead(200).end();
+      return true;
+    }
+    if (url.pathname === UNITS) {
+      if (req.method !== "POST") {
+        res.setHeader("allow", "POST");
+        throw new HttpError(405, "method_not_allowed", "Use POST.");
+      }
+      if (!principal.scopes.includes(TENANT_SCOPE))
+        throw new HttpError(403, "forbidden", `Missing scope ${TENANT_SCOPE}.`);
+      const { unit, parent } = await readObject(req);
+      if (typeof unit !== "string" || typeof parent !== "string")
+        throw invalidRequest("unit and parent are required.");
+      const auditEventId = await serviceFor(principal.organization).createUnit(
+        principal.subject,
+        unit,
+        parent,
+        requestIdOf(res),
+      );
+      send(res, 201, { unit, parent, auditEventId });
+      return true;
+    }
+    const access = RESOURCE_ACCESS.exec(url.pathname);
+    if (access) {
+      if (req.method !== "PUT" && req.method !== "DELETE") {
+        res.setHeader("allow", "PUT, DELETE");
+        throw new HttpError(405, "method_not_allowed", "Use PUT or DELETE.");
+      }
+      if (!principal.scopes.includes(TENANT_SCOPE))
+        throw new HttpError(403, "forbidden", `Missing scope ${TENANT_SCOPE}.`);
+      const [type, id, subject] = access.slice(1).map(decode) as [
+        ResourceType,
+        string,
+        string,
+      ];
+      const auditEventId = await serviceFor(principal.organization).setAccess(
+        principal.subject,
+        type,
+        id,
+        subject,
+        req.method === "PUT",
+        requestIdOf(res),
+      );
+      send(res, 200, { auditEventId });
+      return true;
+    }
+    const setting = UNIT_SETTING.exec(url.pathname);
+    if (setting) {
+      if (req.method !== "PUT" && req.method !== "DELETE") {
+        res.setHeader("allow", "PUT, DELETE");
+        throw new HttpError(405, "method_not_allowed", "Use PUT or DELETE.");
+      }
+      if (!principal.scopes.includes(TENANT_SCOPE))
+        throw new HttpError(403, "forbidden", `Missing scope ${TENANT_SCOPE}.`);
+      const service = serviceFor(principal.organization);
+      const enable = req.method === "PUT";
+      const unit = decode(setting[1] as string);
+      const args = (setting[3] as string).split("/").map(decode);
+      const actor = principal.subject;
+      const requestId = requestIdOf(res);
+      let auditEventId: string;
+      if (setting[2] === "admins" && args.length === 2) {
+        const [capability, subject] = args as [Capability, string];
+        auditEventId = await (enable ? service.grant : service.revoke)(
+          actor,
+          capability,
+          subject,
+          unit,
+          requestId,
+        );
+      } else if (setting[2] === "ceilings" && args.length === 1) {
+        auditEventId = await service.setCeiling(
+          actor,
+          args[0] as Capability,
+          unit,
+          enable,
+          requestId,
+        );
+      } else if (setting[2] === "guardrails" && args.length === 3) {
+        const [action, list, subject] = args as [Action, GuardrailList, string];
+        auditEventId = await service.setGuardrail(
+          actor,
+          unit,
+          action,
+          list,
+          subject,
+          enable,
+          requestId,
+        );
+      } else return false;
+      send(res, 200, { auditEventId });
       return true;
     }
     const principalId = PLACEMENT.exec(url.pathname)?.[1];

@@ -19,6 +19,15 @@ let calls: unknown[][] = [];
 let server: ReturnType<typeof createApp>;
 let base: string;
 
+const recorded =
+  (organization: string, name: string) =>
+  async (...args: unknown[]): Promise<string> => {
+    calls.push([organization, name, ...args.slice(0, -1)]);
+    if (args.includes("user:escalate"))
+      throw new HttpError(403, "forbidden", "Not an admin here.");
+    return "7";
+  };
+
 before(async () => {
   server = createApp({
     authenticate: async () => who,
@@ -41,6 +50,12 @@ before(async () => {
           throw new HttpError(503, "authorization_unavailable", "Down.");
         return id === "yes";
       },
+      createUnit: recorded(organization, "createUnit"),
+      grant: recorded(organization, "grant"),
+      revoke: recorded(organization, "revoke"),
+      setCeiling: recorded(organization, "setCeiling"),
+      setGuardrail: recorded(organization, "setGuardrail"),
+      setAccess: recorded(organization, "setAccess"),
     })),
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -212,4 +227,115 @@ test("resource placement uses the authenticated tenant and actor", async () => {
   assert.deepEqual(calls, [
     ["acme", tenantAdmin.subject, "model", "llm", "finance"],
   ]);
+});
+
+const admin = (method: string, path: string, body?: unknown) =>
+  fetch(`${base}/v1/tenant/units${path}`, {
+    method,
+    headers: { authorization: "Bearer x", "content-type": "application/json" },
+    body: body === undefined ? null : JSON.stringify(body),
+  });
+
+test("unit, admin, ceiling and guardrail routes act as the token principal in its own tenant", async () => {
+  calls = [];
+  who = tenantAdmin;
+  const created = await admin("POST", "", {
+    unit: "finance",
+    parent: "acme",
+    actor: "user:other",
+  });
+  assert.equal(created.status, 201);
+  assert.deepEqual(await created.json(), {
+    unit: "finance",
+    parent: "acme",
+    auditEventId: "7",
+  });
+  const group = encodeURIComponent("group:fin#member");
+  for (const [method, path] of [
+    ["PUT", `/finance/admins/access/${group}`],
+    ["DELETE", `/finance/admins/access/${group}`],
+    ["PUT", "/finance/ceilings/budget"],
+    ["DELETE", "/finance/ceilings/budget"],
+    ["PUT", "/finance/guardrails/model_invoke/blocklist/user:*"],
+  ] as const) {
+    const res = await admin(method, path);
+    assert.equal(res.status, 200, `${method} ${path}`);
+    assert.deepEqual(await res.json(), { auditEventId: "7" });
+  }
+  const actor = tenantAdmin.subject;
+  assert.deepEqual(calls, [
+    ["acme", "createUnit", actor, "finance", "acme"],
+    ["acme", "grant", actor, "access", "group:fin#member", "finance"],
+    ["acme", "revoke", actor, "access", "group:fin#member", "finance"],
+    ["acme", "setCeiling", actor, "budget", "finance", true],
+    ["acme", "setCeiling", actor, "budget", "finance", false],
+    [
+      "acme",
+      "setGuardrail",
+      actor,
+      "finance",
+      "model_invoke",
+      "blocklist",
+      "user:*",
+      true,
+    ],
+  ]);
+});
+
+test("resource access is granted and revoked as the token principal", async () => {
+  calls = [];
+  who = tenantAdmin;
+  const path = `${base}/v1/tenant/resources/model/llm/access/${encodeURIComponent("group:fin#member")}`;
+  for (const method of ["PUT", "DELETE"]) {
+    const res = await fetch(path, {
+      method,
+      headers: { authorization: "Bearer x" },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { auditEventId: "7" });
+  }
+  const get = await fetch(path, { headers: { authorization: "Bearer x" } });
+  assert.equal(get.status, 405);
+  who = workload;
+  assert.equal(
+    (
+      await fetch(path, {
+        method: "PUT",
+        headers: { authorization: "Bearer x" },
+      })
+    ).status,
+    403,
+  );
+  const actor = tenantAdmin.subject;
+  assert.deepEqual(calls, [
+    ["acme", "setAccess", actor, "model", "llm", "group:fin#member", true],
+    ["acme", "setAccess", actor, "model", "llm", "group:fin#member", false],
+  ]);
+});
+
+test("admin routes refuse a missing scope, wrong methods, malformed paths and what the service refuses", async () => {
+  calls = [];
+  who = workload;
+  assert.equal(
+    (await admin("POST", "", { unit: "finance", parent: "acme" })).status,
+    403,
+  );
+  assert.equal((await admin("PUT", "/finance/ceilings/budget")).status, 403);
+  who = tenantAdmin;
+  for (const body of [{ unit: "finance" }, { parent: "acme" }, [1]])
+    assert.equal((await admin("POST", "", body)).status, 400);
+  const get = await admin("GET", "");
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get("allow"), "POST");
+  const post = await admin("POST", "/finance/ceilings/budget");
+  assert.equal(post.status, 405);
+  assert.equal(post.headers.get("allow"), "PUT, DELETE");
+  assert.equal((await admin("PUT", "/finance/ceilings/%E0%A4")).status, 400);
+  assert.equal((await admin("PUT", "/finance/ceilings/a/b")).status, 404);
+  assert.equal((await admin("PUT", "/finance/admins/access")).status, 404);
+  assert.equal(calls.length, 0);
+  assert.equal(
+    (await admin("PUT", "/finance/admins/access/user:escalate")).status,
+    403,
+  );
 });
