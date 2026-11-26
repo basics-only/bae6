@@ -180,7 +180,7 @@ test("exchangeToken refuses an unknown subject token type before sending", async
     await assert.rejects(
       s.authn.exchangeToken({
         subjectToken: SESSION,
-        subjectTokenType: "access_token" as "jwt",
+        subjectTokenType: "saml2" as "jwt",
         audience: "bae6-ai",
       }),
       TypeError,

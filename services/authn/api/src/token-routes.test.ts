@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import type pg from "pg";
 import { migratedTestDatabase } from "./db/test-database.js";
-import { SESSION_TOKEN_TYPE } from "./exchange.js";
+import { SESSION_TOKEN_TYPE, WORKLOAD_TOKEN_TYPE } from "./exchange.js";
 import { localSigner, type Signer, syncKeys } from "./keys.js";
 import { setPrincipalOrgPath } from "./principals.js";
 import { createAuthnApi } from "./server.js";
@@ -16,6 +17,8 @@ const url = process.env.BAE6_DATABASE_URL;
 const skip = url ? false : "BAE6_DATABASE_URL not set";
 const ISSUER = "https://authn.bae6.test";
 const ALICE = `prn_${"a".repeat(32)}`;
+const WORKER = `prn_${"e".repeat(32)}`;
+const PING = "https://ping.example/acme";
 const GATEWAY_SECRET = "g".repeat(40);
 const CONSOLE_SECRET = "c".repeat(40);
 const EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -34,6 +37,25 @@ const p256 = () =>
 const keyA = p256();
 const keyB = p256();
 const signers = new Map<string, Signer>([[keyA.kid, keyA]]);
+const idpKey = await generateKeyPair("ES256");
+const strangerKey = await generateKeyPair("ES256");
+const idpKeys = createLocalJWKSet({
+  keys: [{ ...(await exportJWK(idpKey.publicKey)), alg: "ES256" }],
+});
+let providerDown = false;
+
+const providerToken = (
+  claims: { iss?: string; sub?: string; aud?: string; exp?: number } = {},
+  key = idpKey.privateKey,
+) =>
+  new SignJWT({})
+    .setProtectedHeader({ alg: "ES256" })
+    .setIssuer(claims.iss ?? PING)
+    .setSubject(claims.sub ?? "embed-worker")
+    .setAudience(claims.aud ?? "c")
+    .setIssuedAt()
+    .setExpirationTime(claims.exp ?? Math.floor(Date.now() / 1000) + 600)
+    .sign(key);
 
 before(async () => {
   if (skip) return;
@@ -46,9 +68,17 @@ before(async () => {
      VALUES ('acme', 'ping', 'pingfederate', 'https://ping.example/acme', 'c', 's')`,
   );
   await db.query(
-    `INSERT INTO principals (id, tenant_id, type, org_path)
-     VALUES ($1, 'acme', 'user', '{acme,finance}')`,
-    [ALICE],
+    `INSERT INTO principals (id, tenant_id, type, owner_application_id, org_path)
+     VALUES ($1, 'acme', 'user', null, '{acme,finance}'),
+            ($2, 'acme', 'service', 'demo', '{acme,platform}')`,
+    [ALICE, WORKER],
+  );
+  await db.query(
+    `INSERT INTO external_identities
+       (id, tenant_id, principal_id, provider_connection_id, issuer, subject, last_verified_at)
+     VALUES ($1, 'acme', $3, 'ping', $5, 'alice', now()),
+            ($2, 'acme', $4, 'ping', $5, 'embed-worker', now())`,
+    [`xid_${"1".repeat(32)}`, `xid_${"2".repeat(32)}`, ALICE, WORKER, PING],
   );
   server = createAuthnApi({
     ping: async () => {},
@@ -62,6 +92,10 @@ before(async () => {
       sessionClients: ["console"],
       clientSecret: async (client) =>
         ({ gateway: GATEWAY_SECRET, console: CONSOLE_SECRET })[client],
+      workloadKeys: async () => {
+        if (providerDown) throw new TypeError("fetch failed");
+        return idpKeys;
+      },
     }),
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -301,6 +335,159 @@ test(
       await db.query(
         "UPDATE provider_connections SET status = 'active' WHERE id = 'ping'",
       );
+    }
+  },
+);
+
+const fromWorkload = async (
+  token: string | Promise<string>,
+  audience = "gateway",
+) =>
+  post(
+    {
+      subject_token: await token,
+      subject_token_type: WORKLOAD_TOKEN_TYPE,
+      audience,
+    },
+    { "x-request-id": "req-43" },
+  );
+
+test(
+  "a workload's provider token becomes a service token naming its application",
+  { skip },
+  async () => {
+    const exp = Math.floor(Date.now() / 1000) + 120;
+    const res = await fromWorkload(providerToken({ exp }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.expires_in > 0 && body.expires_in <= 120);
+    const claims = await verifyToken(db, body.access_token, {
+      issuer: ISSUER,
+      audience: "gateway",
+    });
+    assert.equal(claims.sub, WORKER);
+    assert.equal(claims.principal_type, "service");
+    assert.equal(claims.tenant_id, "acme");
+    assert.equal(claims.application_id, "demo");
+    assert.equal(claims.txn, "req-43");
+    assert.deepEqual(claims.org_path, ["acme", "platform"]);
+    assert.equal(claims.session_id, undefined);
+  },
+);
+
+test(
+  "workload exchange refuses users, strangers, other audiences, forged or expired tokens and disabled services",
+  { skip },
+  async () => {
+    const now = Math.floor(Date.now() / 1000);
+    for (const token of [
+      providerToken({ sub: "alice" }),
+      providerToken({ sub: "nobody" }),
+      providerToken({ aud: "gateway" }),
+      providerToken({}, strangerKey.privateKey),
+      providerToken({ exp: now - 120 }),
+      "not-a-jwt",
+    ])
+      await oauthError(await fromWorkload(token), 400, "invalid_request");
+    await oauthError(
+      await fromWorkload(providerToken(), "evil"),
+      400,
+      "invalid_target",
+    );
+    await db.query("UPDATE principals SET status = 'disabled' WHERE id = $1", [
+      WORKER,
+    ]);
+    try {
+      await oauthError(
+        await fromWorkload(providerToken()),
+        400,
+        "invalid_request",
+      );
+    } finally {
+      await db.query("UPDATE principals SET status = 'active' WHERE id = $1", [
+        WORKER,
+      ]);
+    }
+  },
+);
+
+test(
+  "workload exchange refuses a disabled connection, an identity from another issuer and a subject two tenants claim",
+  { skip },
+  async () => {
+    const drifter = "https://elsewhere.example/acme";
+    await db.query(
+      `INSERT INTO external_identities
+         (id, tenant_id, principal_id, provider_connection_id, issuer, subject, last_verified_at)
+       VALUES ($1, 'acme', $2, 'ping', $3, 'drifter', now())`,
+      [`xid_${"3".repeat(32)}`, WORKER, drifter],
+    );
+    await oauthError(
+      await fromWorkload(providerToken({ iss: drifter, sub: "drifter" })),
+      400,
+      "invalid_request",
+    );
+
+    await db.query(
+      "UPDATE provider_connections SET status = 'disabled' WHERE id = 'ping'",
+    );
+    try {
+      await oauthError(
+        await fromWorkload(providerToken()),
+        400,
+        "invalid_request",
+      );
+    } finally {
+      await db.query(
+        "UPDATE provider_connections SET status = 'active' WHERE id = 'ping'",
+      );
+    }
+
+    const twin = `prn_${"f".repeat(32)}`;
+    await db.query(
+      `INSERT INTO provider_connections (tenant_id, id, kind, issuer, client_id, client_secret_ref)
+       VALUES ('globex', 'ping', 'pingfederate', $1, 'c', 's')`,
+      [PING],
+    );
+    await db.query(
+      `INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'globex', 'service')`,
+      [twin],
+    );
+    await db.query(
+      `INSERT INTO external_identities
+         (id, tenant_id, principal_id, provider_connection_id, issuer, subject, last_verified_at)
+       VALUES ($1, 'globex', $2, 'ping', $3, 'embed-worker', now())`,
+      [`xid_${"4".repeat(32)}`, twin, PING],
+    );
+    try {
+      await oauthError(
+        await fromWorkload(providerToken()),
+        400,
+        "invalid_request",
+      );
+    } finally {
+      await db.query(
+        "DELETE FROM external_identities WHERE tenant_id = 'globex'",
+      );
+      await db.query("DELETE FROM principals WHERE tenant_id = 'globex'");
+      await db.query(
+        "DELETE FROM provider_connections WHERE tenant_id = 'globex'",
+      );
+    }
+    assert.equal((await fromWorkload(providerToken())).status, 200);
+  },
+);
+
+test(
+  "workload exchange answers 503 when the provider's keys cannot be fetched",
+  { skip },
+  async () => {
+    providerDown = true;
+    try {
+      const res = await fromWorkload(providerToken());
+      assert.equal(res.status, 503);
+    } finally {
+      providerDown = false;
     }
   },
 );

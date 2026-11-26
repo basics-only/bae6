@@ -10,6 +10,7 @@ export type AuthnOptions = ClientOptions;
 const SUBJECT_TYPES = {
   session: "urn:bae6:params:oauth:token-type:session",
   jwt: "urn:ietf:params:oauth:token-type:jwt",
+  access_token: "urn:ietf:params:oauth:token-type:access_token",
 } as const;
 
 export interface Token {
@@ -117,7 +118,9 @@ export class Authn {
     audience: string;
   }): Promise<Token> {
     if (!Object.hasOwn(SUBJECT_TYPES, input.subjectTokenType)) {
-      throw new TypeError('subjectTokenType must be "session" or "jwt"');
+      throw new TypeError(
+        'subjectTokenType must be "session", "jwt" or "access_token"',
+      );
     }
     const body = await this.#http.json("POST", "/auth/token", {
       form: {

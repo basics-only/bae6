@@ -12,6 +12,7 @@ from bae6_sdk_core.identity import Principal, PrincipalType
 _SUBJECT_TYPES = {
     "session": "urn:bae6:params:oauth:token-type:session",
     "jwt": "urn:ietf:params:oauth:token-type:jwt",
+    "access_token": "urn:ietf:params:oauth:token-type:access_token",
 }
 
 
@@ -135,12 +136,12 @@ class Authn:
         self,
         *,
         subject_token: str,
-        subject_token_type: Literal["session", "jwt"],
+        subject_token_type: Literal["session", "jwt", "access_token"],
         audience: str,
     ) -> Token:
-        """RFC 8693 exchange of a session cookie value or a bae6 token for a token for `audience`."""
+        """RFC 8693 exchange of a session cookie value, a bae6 token or a workload's provider token for a token for `audience`."""
         if subject_token_type not in _SUBJECT_TYPES:
-            raise ValueError('subject_token_type must be "session" or "jwt"')
+            raise ValueError('subject_token_type must be "session", "jwt" or "access_token"')
         body = await self._http.json(
             "POST",
             "/auth/token",

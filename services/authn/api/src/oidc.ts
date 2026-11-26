@@ -109,6 +109,10 @@ export class OidcProvider {
     return new OidcProvider(config, connection);
   }
 
+  get jwksUri(): string | undefined {
+    return this.config.serverMetadata().jwks_uri;
+  }
+
   async beginLogin(
     options: { loginHint?: string } = {},
   ): Promise<{ url: URL; pending: PendingLogin }> {
