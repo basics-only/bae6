@@ -52,6 +52,22 @@ class AuthzTimeoutError(AuthzTransportError):
 
 
 @dataclass(frozen=True)
+class ExecutionContext:
+    tenant_id: str
+    org_path: tuple[str, ...]
+    principal_id: str
+    principal_type: str
+    actor_id: str
+    request_id: str
+    application_id: str | None = None
+    session_id: str | None = None
+    task_id: str | None = None
+    delegation_id: str | None = None
+    trace_id: str | None = None
+    cost_center_id: str | None = None
+
+
+@dataclass(frozen=True)
 class Check:
     action: str
     resource: str
@@ -326,6 +342,78 @@ class Authz:
         if not isinstance(allowed, bool):
             raise _invalid_response()
         return allowed
+
+    async def tenant_check_with_context(
+        self, *, resource_type: str, resource_id: str
+    ) -> ExecutionContext | None:
+        parsed = await self._http.json(
+            "POST",
+            "/v1/tenant/check",
+            body={
+                "resourceType": resource_type,
+                "resourceId": resource_id,
+                "includeExecutionContext": True,
+            },
+        )
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("allowed"), bool):
+            raise _invalid_response()
+        if not parsed["allowed"]:
+            return None
+        context = parsed.get("executionContext")
+        if not isinstance(context, dict):
+            raise _invalid_response()
+        tenant_id = context.get("tenantId")
+        principal_id = context.get("principalId")
+        principal_type = context.get("principalType")
+        actor_id = context.get("actorId")
+        request_id = context.get("requestId")
+        org_path = context.get("orgPath")
+        if (
+            not isinstance(tenant_id, str)
+            or not isinstance(principal_id, str)
+            or not isinstance(principal_type, str)
+            or not isinstance(actor_id, str)
+            or not isinstance(request_id, str)
+            or not isinstance(org_path, list)
+            or not 1 <= len(org_path) <= 32
+            or org_path[0] != tenant_id
+            or not all(isinstance(unit, str) for unit in org_path)
+        ):
+            raise _invalid_response()
+        fields = {
+            "application_id": "applicationId",
+            "session_id": "sessionId",
+            "task_id": "taskId",
+            "delegation_id": "delegationId",
+            "trace_id": "traceId",
+            "cost_center_id": "costCenterId",
+        }
+        optional: dict[str, str] = {}
+        for attribute, field in fields.items():
+            if field in context:
+                value = context[field]
+                if not isinstance(value, str):
+                    raise _invalid_response()
+                optional[attribute] = value
+        if "delegation_id" in optional and "task_id" not in optional:
+            raise _invalid_response()
+        return ExecutionContext(
+            tenant_id,
+            tuple(org_path),
+            principal_id,
+            principal_type,
+            actor_id,
+            request_id,
+            **optional,
+        )
+
+    async def require(self, *, resource_type: str, resource_id: str) -> ExecutionContext:
+        context = await self.tenant_check_with_context(
+            resource_type=resource_type, resource_id=resource_id
+        )
+        if context is None:
+            raise AuthzAuthError(403, "forbidden", "Not permitted.")
+        return context
 
     async def _post(
         self, path: str, end_user_token: str, payload: dict[str, object]

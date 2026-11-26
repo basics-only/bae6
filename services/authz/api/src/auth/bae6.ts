@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
+import { directExecutionContext } from "./execution-context.js";
 import { INVALID_TOKEN_CODES } from "./oidc.js";
 import { type Authenticator, ORGANIZATION_ID } from "./principal.js";
 
@@ -54,7 +55,15 @@ export function bae6Authenticator(config: {
         !PRINCIPAL_TYPES.has(type)
       )
         return null;
+      const executionContext = directExecutionContext(
+        payload,
+        tenant,
+        sub,
+        type,
+      );
+      if (!executionContext) return null;
       return {
+        executionContext,
         subject: `${type}:${sub}`,
         organization: tenant,
         scopes: [TENANT_SCOPE],

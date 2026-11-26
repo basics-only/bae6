@@ -5,6 +5,21 @@ export interface AuthzOptions extends ClientOptions {
   application: string;
 }
 
+export interface ExecutionContext {
+  tenantId: string;
+  orgPath: readonly string[];
+  principalId: string;
+  principalType: string;
+  actorId: string;
+  requestId: string;
+  applicationId?: string;
+  sessionId?: string;
+  taskId?: string;
+  delegationId?: string;
+  traceId?: string;
+  costCenterId?: string;
+}
+
 export interface Check {
   action: string;
   resource: string;
@@ -300,6 +315,65 @@ export class Authz {
     if (!isObject(parsed) || typeof parsed.allowed !== "boolean")
       throw invalidResponse();
     return parsed.allowed;
+  }
+
+  async tenantCheckWithContext(input: {
+    resourceType: string;
+    resourceId: string;
+  }): Promise<ExecutionContext | undefined> {
+    const parsed = await this.#http.json("POST", "/v1/tenant/check", {
+      body: { ...input, includeExecutionContext: true },
+    });
+    if (!isObject(parsed) || typeof parsed.allowed !== "boolean")
+      throw invalidResponse();
+    if (!parsed.allowed) return undefined;
+    const context = parsed.executionContext;
+    const required = [
+      "tenantId",
+      "principalId",
+      "principalType",
+      "actorId",
+      "requestId",
+    ] as const;
+    const optional = [
+      "applicationId",
+      "sessionId",
+      "taskId",
+      "delegationId",
+      "traceId",
+      "costCenterId",
+    ] as const;
+    if (
+      !isObject(context) ||
+      !required.every((field) => typeof context[field] === "string") ||
+      !Array.isArray(context.orgPath) ||
+      context.orgPath.length < 1 ||
+      context.orgPath.length > 32 ||
+      context.orgPath[0] !== context.tenantId ||
+      !context.orgPath.every((unit) => typeof unit === "string") ||
+      !optional.every(
+        (field) =>
+          context[field] === undefined || typeof context[field] === "string",
+      ) ||
+      (context.delegationId !== undefined && context.taskId === undefined)
+    )
+      throw invalidResponse();
+    const fields = [...required, ...optional].filter(
+      (field) => context[field] !== undefined,
+    );
+    return Object.fromEntries([
+      ["orgPath", [...context.orgPath]],
+      ...fields.map((field) => [field, context[field]]),
+    ]) as ExecutionContext;
+  }
+
+  async require(input: {
+    resourceType: string;
+    resourceId: string;
+  }): Promise<ExecutionContext> {
+    const context = await this.tenantCheckWithContext(input);
+    if (!context) throw new AuthzAuthError(403, "forbidden", "Not permitted.");
+    return context;
   }
 
   async #post(

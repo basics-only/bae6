@@ -4,9 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "start:tenant": "node tenant.js"
   },
   "dependencies": {
+    "@bae6/authn": "workspace:*",
     "@bae6/authz": "workspace:*",
     "express": "5.3.0"
   }

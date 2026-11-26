@@ -192,15 +192,36 @@ export function tenantRoutes(
     const service = serviceFor(principal.organization);
     const body = await readObject(req);
     if (isCheck) {
-      const { resourceType, resourceId } = body;
+      const { resourceType, resourceId, includeExecutionContext } = body;
       if (typeof resourceType !== "string" || typeof resourceId !== "string")
         throw invalidRequest("resourceType and resourceId are required.");
+      if (
+        includeExecutionContext !== undefined &&
+        typeof includeExecutionContext !== "boolean"
+      )
+        throw invalidRequest("includeExecutionContext must be a boolean.");
+      if (includeExecutionContext && !principal.executionContext)
+        throw new HttpError(
+          403,
+          "execution_context_unavailable",
+          "The token does not carry execution context.",
+        );
       const allowed = await service.check(
         principal.subject,
         resourceType as Parameters<TenantService["check"]>[1],
         resourceId,
       );
-      send(res, 200, { allowed });
+      if (includeExecutionContext) res.setHeader("cache-control", "no-store");
+      send(res, 200, {
+        allowed,
+        ...(allowed &&
+          includeExecutionContext && {
+            executionContext: {
+              ...principal.executionContext,
+              requestId: requestIdOf(res),
+            },
+          }),
+      });
       return true;
     }
     if (isResourcePlacement) {

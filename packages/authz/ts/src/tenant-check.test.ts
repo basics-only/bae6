@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import { Authz, AuthzApiError } from "./index.js";
+import { executionContextOf, fastifyHook, tenantGuard } from "./middleware.js";
 
 test("tenantCheck posts the resource and raises instead of denying quietly", async () => {
   const seen: string[] = [];
@@ -58,4 +59,71 @@ test("placeTenantResource sends the placement and returns its audit ID", async (
     },
   });
   assert.equal(await authz.placeTenantResource(input), "42");
+});
+
+test("tenant middleware exposes verified context only for a successful check", async () => {
+  const resource = { resourceType: "model", resourceId: "llm" };
+  const context = {
+    tenantId: "acme",
+    orgPath: ["acme"],
+    principalId: `prn_${"a".repeat(32)}`,
+    principalType: "user",
+    actorId: `prn_${"a".repeat(32)}`,
+    requestId: "signed-request",
+  };
+  let response: unknown = {
+    allowed: true,
+    executionContext: { ...context, unexpected: "dropped" },
+  };
+  const guard = tenantGuard({
+    includeExecutionContext: true,
+    authz: {
+      baseUrl: "https://authz.example",
+      application: "crm",
+      fetch: async (_url, init) => {
+        assert.deepEqual(JSON.parse(String(init?.body)), {
+          ...resource,
+          includeExecutionContext: true,
+        });
+        return Response.json(response);
+      },
+    },
+    async exchange() {
+      return { accessToken: "t", expiresIn: 300 };
+    },
+  });
+  const request = {
+    headers: { authorization: "Bearer caller", "x-request-id": "forged" },
+  };
+  let status: number | undefined;
+  const reply = {
+    code(code: number) {
+      status = code;
+      return this;
+    },
+    header() {
+      return this;
+    },
+    send() {},
+  };
+  const hook = fastifyHook(guard, () => resource);
+  await hook(request, reply);
+  assert.deepEqual(executionContextOf(request), context);
+  response = { allowed: false };
+  await hook(request, reply);
+  assert.equal(status, 403);
+  assert.equal(executionContextOf(request), undefined);
+  for (const bad of [
+    { allowed: true },
+    {
+      allowed: true,
+      executionContext: { ...context, delegationId: `dlg_${"c".repeat(32)}` },
+    },
+  ]) {
+    response = bad;
+    status = undefined;
+    await hook(request, reply);
+    assert.equal(status, 503);
+    assert.equal(executionContextOf(request), undefined);
+  }
 });

@@ -31,3 +31,15 @@ Then run an example from its README. Stop the stack with `make down`.
 With the stack up (`make up`), `examples/smoke.sh` seeds an application, starts both
 examples and checks four outcomes for each: allowed (200), denied (403), no token (401), unknown token (401). CI runs it in the
 `examples` job. The Databricks example is not part of it.
+
+## Tenant mode
+
+Needs authz pinned to a tenant model with `document:d1` readable by the caller, and authn with
+`node-protected-api` and `fastapi-protected-api` as audiences that re-exchange to `bae6-authz`.
+Set `BAE6_AUTHN_URL`, `BAE6_API_URL` and `BAE6_AUTHN_CLIENT_SECRET`, then from the repo root:
+
+```sh
+pnpm --filter '{./examples/authz/express}...' build
+pnpm --filter @bae6/authz-example-express start:tenant
+uv run --project examples/authz/fastapi uvicorn tenant:app --app-dir examples/authz/fastapi --port 8101
+```

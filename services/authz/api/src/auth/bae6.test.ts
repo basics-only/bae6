@@ -47,6 +47,7 @@ const sign = (
   new SignJWT({
     tenant_id: "acme",
     principal_type: "user",
+    org_path: ["acme"],
     ...claims,
   })
     .setProtectedHeader({
@@ -65,6 +66,13 @@ const bearer = async (...args: Parameters<typeof sign>) =>
 
 test("a bae6 token becomes a tenant principal named by its type and id", async () => {
   assert.deepEqual(await authenticate(await bearer()), {
+    executionContext: {
+      tenantId: "acme",
+      orgPath: ["acme"],
+      principalId: ALICE,
+      principalType: "user",
+      actorId: ALICE,
+    },
     subject: `user:${ALICE}`,
     organization: "acme",
     scopes: ["tenant"],
