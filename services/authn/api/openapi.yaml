@@ -140,7 +140,9 @@ paths:
       summary: Revoke a delegation and its descendants.
       description: >
         Requires a live, non-delegated bae6-authn bearer token for the initiating
-        principal in the same tenant. Repeating a revocation returns 204.
+        principal in the same tenant. Repeating a revocation returns 204. Re-exchange of
+        a revoked delegation's tokens is refused at once; tokens already issued stay valid
+        until they expire, at most 300 seconds.
       parameters:
         - name: id
           in: path

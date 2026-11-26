@@ -268,3 +268,20 @@ test("revokeDelegation uses the initiating principal bearer and expects no conte
     await s.close();
   }
 });
+
+test("revokeDelegation refuses a malformed ID locally and reports an unknown delegation", async () => {
+  const s = await serve(404, { code: "not_found", message: "Not found." });
+  try {
+    await assert.rejects(
+      s.authn.revokeDelegation("dlg_../x", "initiator-token"),
+      TypeError,
+    );
+    assert.equal(s.seen.length, 0);
+    await assert.rejects(
+      s.authn.revokeDelegation(`dlg_${"b".repeat(32)}`, "initiator-token"),
+      AuthnApiError,
+    );
+  } finally {
+    await s.close();
+  }
+});

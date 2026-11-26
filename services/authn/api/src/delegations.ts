@@ -221,7 +221,7 @@ export async function revokeDelegation(
          SELECT id FROM root
          UNION ALL
          SELECT d.id FROM delegations d JOIN tree t ON d.parent_id = t.id
-          WHERE d.tenant_id = $1 AND d.initiating_principal_id = $3
+          WHERE d.tenant_id = $1
        ), updated AS (
          UPDATE delegations SET revoked_at = now()
           WHERE id IN (SELECT id FROM tree) AND revoked_at IS NULL

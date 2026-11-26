@@ -307,9 +307,7 @@ export function createBffRoutes(deps: BffDeps) {
     }
     if (
       directOnly &&
-      (claims.act !== undefined ||
-        claims.delegation_id !== undefined ||
-        claims.exp <= Math.floor(Date.now() / 1000))
+      (claims.act !== undefined || claims.delegation_id !== undefined)
     )
       throw unauthenticated;
     const principals: { id: string; type?: string }[] = [

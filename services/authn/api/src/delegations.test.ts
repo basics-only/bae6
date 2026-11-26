@@ -270,3 +270,24 @@ test(
     assert.equal(await revokeDelegation(db, "acme", root, ALICE), 1);
   },
 );
+
+test(
+  "revoking reaches every descendant even if one names another initiator",
+  { skip },
+  async () => {
+    const { id: root } = await create({ taskId: "task-x" });
+    const { id: child } = await create({
+      taskId: "task-x",
+      createdByPrincipalId: AGENT,
+      parentDelegationId: root,
+      actorPrincipalId: AGENT2,
+      expiresAt: soon,
+    });
+    await db.query(
+      "UPDATE delegations SET initiating_principal_id = $1 WHERE id = $2",
+      [AGENT, child],
+    );
+    assert.equal(await revokeDelegation(db, "acme", root, ALICE), 2);
+    assert.notEqual(await revokedAt(child), null);
+  },
+);
