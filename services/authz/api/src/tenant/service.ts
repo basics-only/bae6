@@ -3,6 +3,7 @@ import { ConsistencyPreference, OpenFgaClient } from "@openfga/sdk";
 import type pg from "pg";
 import { recordAudit } from "../admin/audit.js";
 import { fga as guardedFga } from "../admin/relationships.js";
+import type { Delegation } from "../auth/principal.js";
 import { HttpError } from "../http.js";
 
 export const MAX_DEPTH = 22;
@@ -112,6 +113,18 @@ const CHECK_RELATION: Record<(typeof RESOURCE_TYPES)[number], string> = {
   document: "can_read",
   tool: "can_invoke",
   service_resource: "can_call",
+};
+const DELEGATED_TYPE: Record<(typeof RESOURCE_TYPES)[number], string> = {
+  application: "application",
+  api: "api",
+  model: "model",
+  agent_definition: "agent",
+  prompt: "prompt",
+  mcp_server: "mcp_server",
+  dataset: "dataset",
+  document: "document",
+  tool: "tool",
+  service_resource: "service",
 };
 const ACCESS_RELATION: Record<(typeof RESOURCE_TYPES)[number], string> = {
   application: "user",
@@ -800,14 +813,36 @@ export function createTenantService(deps: {
       );
     },
 
-    async check(subject: string, type: ResourceType, id: string) {
-      if (!PLACEABLE.test(subject))
+    async check(
+      subject: string,
+      type: ResourceType,
+      id: string,
+      delegation?: Delegation,
+    ) {
+      if (
+        !PLACEABLE.test(subject) ||
+        (delegation && !PLACEABLE.test(delegation.actor))
+      )
         throw forbidden("This principal cannot be checked.");
       oneOf(RESOURCE_TYPES, type, "resource type");
       if (!RESOURCE_ID.test(id)) throw invalid("Invalid resource id.");
-      return deadline.run(Date.now() + CHECK_BUDGET_MS, () =>
-        holds(subject, CHECK_RELATION[type], `${type}:${id}`),
-      );
+      const relation = CHECK_RELATION[type];
+      const object = `${type}:${id}`;
+      if (delegation) {
+        const name = DELEGATED_TYPE[type];
+        if (
+          !delegation.resources.includes(`${name}:${id}`) ||
+          !delegation.actions.includes(`${name}:${relation.slice(4)}`)
+        )
+          return false;
+      }
+      return deadline.run(Date.now() + CHECK_BUDGET_MS, async () => {
+        const [initiator, actor] = await Promise.all([
+          holds(subject, relation, object),
+          delegation ? holds(delegation.actor, relation, object) : true,
+        ]);
+        return initiator && actor;
+      });
     },
 
     async placeResource(

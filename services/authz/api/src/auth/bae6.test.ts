@@ -99,6 +99,66 @@ test("tokens that are forged, mistyped, for another audience or tenant, delegate
     assert.equal(await authenticate(authorization), null);
 });
 
+const AGENT = `prn_${"b".repeat(32)}`;
+const DELEGATION = `dlg_${"c".repeat(32)}`;
+const delegated = {
+  act: { sub: AGENT, principal_type: "agent" },
+  application_id: "helper",
+  task_id: "summarize",
+  delegation_id: DELEGATION,
+  delegated_resources: ["document:d1"],
+  delegated_actions: ["document:read"],
+};
+
+test("a delegated token keeps the initiator as subject and carries the actor and scope", async () => {
+  assert.deepEqual(await authenticate(await bearer(delegated)), {
+    executionContext: {
+      tenantId: "acme",
+      orgPath: ["acme"],
+      principalId: ALICE,
+      principalType: "user",
+      actorId: AGENT,
+      applicationId: "helper",
+      taskId: "summarize",
+      delegationId: DELEGATION,
+    },
+    delegation: {
+      actor: `agent:${AGENT}`,
+      resources: ["document:d1"],
+      actions: ["document:read"],
+    },
+    subject: `user:${ALICE}`,
+    organization: "acme",
+    scopes: ["tenant:delegated"],
+    applications: [],
+    issuer: ISSUER,
+  });
+});
+
+test("a delegated token missing or bending any part of its delegation is refused", async () => {
+  for (const over of [
+    { act: undefined },
+    { act: { sub: AGENT } },
+    { act: { sub: AGENT, principal_type: "user" } },
+    { act: { sub: ALICE, principal_type: "agent" } },
+    { delegation_id: undefined },
+    { delegation_id: "dlg_x" },
+    { task_id: undefined },
+    { delegated_resources: undefined },
+    { delegated_resources: [] },
+    { delegated_resources: ["document:d1", "document:d1"] },
+    {
+      delegated_resources: Array.from({ length: 17 }, (_, i) => `model:m${i}`),
+    },
+    { delegated_actions: ["read"] },
+  ])
+    assert.equal(
+      await authenticate(await bearer({ ...delegated, ...over })),
+      null,
+      JSON.stringify(over),
+    );
+});
+
 test("the second authenticator is consulted only when the first refuses", async () => {
   const fallback: Authenticator = async () => ({
     subject: "other",

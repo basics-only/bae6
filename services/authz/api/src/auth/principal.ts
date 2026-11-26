@@ -18,6 +18,14 @@ export interface Principal {
   /** Set when the token was minted for administration (the issuer's `adminAudience`). */
   admin?: true;
   executionContext?: NonNullable<ReturnType<typeof directExecutionContext>>;
+  delegation?: Delegation;
+}
+
+/** A verified delegated token: `subject` is the initiator and `actor` must be allowed too. */
+export interface Delegation {
+  actor: string;
+  resources: readonly string[];
+  actions: readonly string[];
 }
 
 /**

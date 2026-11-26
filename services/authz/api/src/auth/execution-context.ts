@@ -4,6 +4,7 @@ const OPTIONAL = [
   ["application_id", "applicationId", ORGANIZATION_ID],
   ["session_id", "sessionId", /^ses_[0-9a-f]{32}$/],
   ["task_id", "taskId", /^[A-Za-z0-9._-]{1,128}$/],
+  ["delegation_id", "delegationId", /^dlg_[0-9a-f]{32}$/],
   ["trace_id", "traceId", /^[0-9a-f]{32}$/],
   ["cost_center_id", "costCenterId", ORGANIZATION_ID],
 ] as const;
@@ -13,6 +14,7 @@ export function directExecutionContext(
   tenantId: string,
   principalId: string,
   principalType: string,
+  actorId = principalId,
 ) {
   const { org_path: orgPath } = claims;
   if (
@@ -38,7 +40,7 @@ export function directExecutionContext(
     orgPath: orgPath as string[],
     principalId,
     principalType,
-    actorId: principalId,
+    actorId,
     ...optional,
   };
 }

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { TENANT_SCOPE } from "../auth/bae6.js";
+import { DELEGATED_SCOPE, TENANT_SCOPE } from "../auth/bae6.js";
 import type { Principal } from "../auth/index.js";
 import { HttpError, readJson, requestIdOf, send } from "../http.js";
 import type {
@@ -23,6 +23,11 @@ const RESOURCE_HEADER = "bae6-resource";
 const GATEWAY_RESOURCE = /^([a-z_]{1,32}):([^:\s]{1,256})$/;
 const MAX_BODY_BYTES = 1024;
 const PLACEABLE_TYPES = new Set(["user", "service", "agent", "application"]);
+
+const mayCheck = (principal: Principal) =>
+  principal.scopes.includes(
+    principal.delegation ? DELEGATED_SCOPE : TENANT_SCOPE,
+  );
 
 const invalidRequest = (message: string) =>
   new HttpError(400, "invalid_request", message);
@@ -68,7 +73,7 @@ export function tenantRoutes(
       url.pathname === EXT_AUTHZ ||
       url.pathname.startsWith(`${EXT_AUTHZ}/`)
     ) {
-      if (!principal.scopes.includes(TENANT_SCOPE))
+      if (!mayCheck(principal))
         throw new HttpError(403, "forbidden", `Missing scope ${TENANT_SCOPE}.`);
       const header = req.headers[RESOURCE_HEADER];
       const match =
@@ -79,6 +84,7 @@ export function tenantRoutes(
         principal.subject,
         match[1] as Parameters<TenantService["check"]>[1],
         match[2] as string,
+        principal.delegation,
       );
       if (!allowed) throw new HttpError(403, "forbidden", "Not permitted.");
       res.writeHead(200).end();
@@ -187,7 +193,9 @@ export function tenantRoutes(
       res.setHeader("allow", method);
       throw new HttpError(405, "method_not_allowed", `Use ${method}.`);
     }
-    if (!principal.scopes.includes(TENANT_SCOPE))
+    if (
+      !(isCheck ? mayCheck(principal) : principal.scopes.includes(TENANT_SCOPE))
+    )
       throw new HttpError(403, "forbidden", `Missing scope ${TENANT_SCOPE}.`);
     const service = serviceFor(principal.organization);
     const body = await readObject(req);
@@ -210,6 +218,7 @@ export function tenantRoutes(
         principal.subject,
         resourceType as Parameters<TenantService["check"]>[1],
         resourceId,
+        principal.delegation,
       );
       if (includeExecutionContext) res.setHeader("cache-control", "no-store");
       send(res, 200, {
