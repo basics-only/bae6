@@ -406,6 +406,57 @@ paths:
         "503":
           $ref: "#/components/responses/Error"
 
+  /v1/tenant/resources/{resourceType}/{resourceId}/access/{subject}:
+    parameters:
+      - name: resourceType
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [application, api, model, agent_definition, prompt, mcp_server, tool, dataset, document, service_resource]
+      - name: resourceId
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[A-Za-z0-9_@.+|-]{1,256}$" }
+      - name: subject
+        in: path
+        required: true
+        description: "`<type>:<id>` or `group:<id>#member`, percent-encoded. No wildcards."
+        schema: { type: string }
+    put:
+      tags: [tenant]
+      operationId: grantTenantResourceAccess
+      summary: Let a principal or group use a resource
+      description: |
+        Writes the resource type's access relation (`invoker` for a model, `reader` for a
+        document, and so on). The actor needs `access_admin` on the resource's unit. The
+        unit's guardrails still apply at check time.
+      security:
+        - bae6Token: [tenant]
+      responses: &tenantSettingResponses
+        "200":
+          description: Done.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [auditEventId]
+                properties:
+                  auditEventId: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [tenant]
+      operationId: revokeTenantResourceAccess
+      summary: Stop a principal or group from using a resource
+      description: Same permission as granting. Seen by the next check.
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
   /v1/tenant/check:
     post:
       tags: [tenant]
@@ -492,6 +543,124 @@ paths:
           $ref: "#/components/responses/Error"
         "503":
           $ref: "#/components/responses/Error"
+  /v1/tenant/units:
+    post:
+      tags: [tenant]
+      operationId: createTenantUnit
+      summary: Create an org unit under a parent
+      description: |
+        The actor is the token's principal and needs `settings_admin` on the parent. The new
+        unit gets allow-all default allow-lists and must stay within the depth cap. The root
+        unit is created by the operator command `node dist/tenant/bootstrap-root.js`, never
+        over HTTP.
+      security:
+        - bae6Token: [tenant]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [unit, parent]
+              properties:
+                unit: { $ref: "#/components/schemas/TenantUnit" }
+                parent: { $ref: "#/components/schemas/TenantUnit" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unit, parent, auditEventId]
+                properties:
+                  unit: { type: string }
+                  parent: { type: string }
+                  auditEventId: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /v1/tenant/units/{unit}/admins/{capability}/{subject}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantUnit" }
+      - { $ref: "#/components/parameters/TenantCapability" }
+      - name: subject
+        in: path
+        required: true
+        description: "`user:<id>`, `service:<id>` or `group:<id>#member`, percent-encoded."
+        schema: { type: string }
+    put:
+      tags: [tenant]
+      operationId: grantTenantAdmin
+      summary: Grant a delegated admin capability on a unit
+      description: The actor needs `can_grant_<capability>_admin` on the unit, which the unit's ceiling bounds.
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
+    delete:
+      tags: [tenant]
+      operationId: revokeTenantAdmin
+      summary: Revoke a delegated admin capability on a unit
+      description: Same permission as granting. The root keeps at least one admin per capability (`409`).
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
+  /v1/tenant/units/{unit}/ceilings/{capability}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantUnit" }
+      - { $ref: "#/components/parameters/TenantCapability" }
+    put:
+      tags: [tenant]
+      operationId: setTenantCeiling
+      summary: Allow a capability to be delegated at a unit
+      description: The actor needs `can_set_<capability>_admin_ceiling`, held only by the parent's granters.
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
+    delete:
+      tags: [tenant]
+      operationId: clearTenantCeiling
+      summary: Stop a capability from being delegated at a unit
+      description: Same permission as setting it. The root ceiling cannot be cleared (`409`).
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
+  /v1/tenant/units/{unit}/guardrails/{action}/{list}/{subject}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantUnit" }
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [application_use, api_call, model_invoke, agent_run, prompt_use, mcp_server_use, tool_invoke, dataset_query, document_read, service_call]
+      - name: list
+        in: path
+        required: true
+        schema: { type: string, enum: [allowlist, blocklist] }
+      - name: subject
+        in: path
+        required: true
+        description: "`<type>:<id>`, `<type>:*` or `group:<id>#member`, percent-encoded."
+        schema: { type: string }
+    put:
+      tags: [tenant]
+      operationId: setTenantGuardrail
+      summary: Add a subject to a unit's allow-list or blocklist for an action
+      description: The actor needs `can_set_guardrails` on the unit. Units below inherit it and can only tighten it.
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
+    delete:
+      tags: [tenant]
+      operationId: clearTenantGuardrail
+      summary: Remove a subject from a unit's allow-list or blocklist for an action
+      security:
+        - bae6Token: [tenant]
+      responses: *tenantSettingResponses
   /v1/tenant/principals/{principalId}/unit:
     put:
       tags: [tenant]
@@ -1134,6 +1303,19 @@ components:
         minimum: 1
         maximum: 100
         default: 50
+    TenantUnit:
+      name: unit
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/TenantUnit"
+    TenantCapability:
+      name: capability
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [access, settings, app, budget, security]
   responses:
     Error:
       description: Error. The `code` is stable and machine-readable.
@@ -1148,6 +1330,9 @@ components:
                 message: Caller is not permitted for this application.
                 requestId: req_01HZX8
   schemas:
+    TenantUnit:
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
     ApplicationId:
       type: string
       pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
