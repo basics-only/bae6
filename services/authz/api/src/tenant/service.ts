@@ -785,8 +785,16 @@ export function createTenantService(deps: {
         enable ? "tenant.access.grant" : "tenant.access.revoke",
         { resource: tuple.object, grantee: subject },
         requestId,
-        async () => {
-          await requireRelation(actor, "can_grant", tuple.object);
+        async (db) => {
+          const {
+            rows: [registered],
+          } = await db.query<{ unit: string }>(
+            "SELECT unit FROM tenant_resources WHERE organization_id = $1 AND resource = $2",
+            [organization, tuple.object],
+          );
+          if (!registered)
+            throw forbidden("Not an access admin of this resource's unit.");
+          await requireRelation(actor, "access_admin", registered.unit);
           await (enable ? write([tuple]) : remove([tuple]));
         },
       );

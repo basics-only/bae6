@@ -129,6 +129,10 @@ export function tenantRoutes(
     }
     const setting = UNIT_SETTING.exec(url.pathname);
     if (setting) {
+      const arity = { admins: 2, ceilings: 1, guardrails: 3 }[
+        setting[2] as "admins" | "ceilings" | "guardrails"
+      ];
+      if ((setting[3] as string).split("/").length !== arity) return false;
       if (req.method !== "PUT" && req.method !== "DELETE") {
         res.setHeader("allow", "PUT, DELETE");
         throw new HttpError(405, "method_not_allowed", "Use PUT or DELETE.");
@@ -142,7 +146,7 @@ export function tenantRoutes(
       const actor = principal.subject;
       const requestId = requestIdOf(res);
       let auditEventId: string;
-      if (setting[2] === "admins" && args.length === 2) {
+      if (setting[2] === "admins") {
         const [capability, subject] = args as [Capability, string];
         auditEventId = await (enable ? service.grant : service.revoke)(
           actor,
@@ -151,7 +155,7 @@ export function tenantRoutes(
           unit,
           requestId,
         );
-      } else if (setting[2] === "ceilings" && args.length === 1) {
+      } else if (setting[2] === "ceilings") {
         auditEventId = await service.setCeiling(
           actor,
           args[0] as Capability,
@@ -159,7 +163,7 @@ export function tenantRoutes(
           enable,
           requestId,
         );
-      } else if (setting[2] === "guardrails" && args.length === 3) {
+      } else {
         const [action, list, subject] = args as [Action, GuardrailList, string];
         auditEventId = await service.setGuardrail(
           actor,
@@ -170,7 +174,7 @@ export function tenantRoutes(
           enable,
           requestId,
         );
-      } else return false;
+      }
       send(res, 200, { auditEventId });
       return true;
     }

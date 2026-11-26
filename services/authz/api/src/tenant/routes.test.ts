@@ -332,6 +332,7 @@ test("admin routes refuse a missing scope, wrong methods, malformed paths and wh
   assert.equal(post.headers.get("allow"), "PUT, DELETE");
   assert.equal((await admin("PUT", "/finance/ceilings/%E0%A4")).status, 400);
   assert.equal((await admin("PUT", "/finance/ceilings/a/b")).status, 404);
+  assert.equal((await admin("POST", "/finance/ceilings/a/b")).status, 404);
   assert.equal((await admin("PUT", "/finance/admins/access")).status, 404);
   assert.equal(calls.length, 0);
   assert.equal(
