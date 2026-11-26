@@ -880,15 +880,38 @@ test(
     assert.equal(claims.task_id, "summarize");
     assert.deepEqual(claims.delegated_resources, scope.allowedResources);
     assert.deepEqual(claims.delegated_actions, scope.allowedActions);
-    assert.equal(claims.session_id, undefined);
+    assert.equal(claims.session_id, owner.id);
     assert.ok(claims.exp <= Math.floor(Date.now() / 1000) + 120);
 
+    const sessionless = (
+      await mintToken(db, signers, AUTHN_ISSUER, {
+        aud: AUTHN_AUDIENCE,
+        sub: owner.principalId,
+        txn: "delegate-test",
+        tenant_id: "acme",
+        org_path: ["acme"],
+        principal_type: "user",
+      })
+    ).token;
+    const risky = {
+      ...scope,
+      allowedActions: ["tool:delete"],
+      approvedActions: ["tool:delete"],
+    };
     for (const [body, status, bearer] of [
       [scope, 401, undefined],
       [{ ...scope, audience: "nobody" }, 400, ownerToken],
       [{ ...scope, applicationId: undefined }, 400, ownerToken],
+      [{ ...scope, applicationId: "other-app" }, 400, ownerToken],
       [{ ...scope, expiresInSeconds: 7200 }, 400, ownerToken],
+      [{ ...scope, approvedActions: null }, 400, ownerToken],
+      [
+        { ...risky, approvedActions: ["tool:delete", "tool:delete"] },
+        400,
+        ownerToken,
+      ],
       [{ ...scope, allowedActions: ["tool:delete"] }, 403, ownerToken],
+      [risky, 403, sessionless],
       [{ ...scope, parentDelegationId: delegationId }, 403, ownerToken],
     ] as const)
       assert.equal(
@@ -896,19 +919,7 @@ test(
         status,
         JSON.stringify(body),
       );
-    assert.equal(
-      (
-        await delegate(
-          {
-            ...scope,
-            allowedActions: ["tool:delete"],
-            approvedActions: ["tool:delete"],
-          },
-          ownerToken,
-        )
-      ).status,
-      201,
-    );
+    assert.equal((await delegate(risky, ownerToken)).status, 201);
 
     const nested = {
       ...scope,
@@ -947,6 +958,7 @@ test(
     );
     assert.equal(childClaims.sub, owner.principalId);
     assert.deepEqual(childClaims.act, { sub: helper });
+    assert.equal(childClaims.session_id, owner.id);
 
     assert.equal(
       (

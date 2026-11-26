@@ -12,6 +12,7 @@ export type DelegationErrorCode =
   | "invalid_request"
   | "unknown_principal"
   | "principal_inactive"
+  | "invalid_actor"
   | "unknown_parent"
   | "exceeds_parent"
   | "exceeds_limit"
@@ -82,6 +83,7 @@ function validate(limits: DelegationLimits, d: NewDelegation) {
     !distinct(d.allowedResources, MAX_DELEGATED, RESOURCE) ||
     !distinct(d.allowedActions, MAX_DELEGATED, ACTION) ||
     !Array.isArray(approved) ||
+    (approved.length > 0 && !distinct(approved, MAX_DELEGATED, ACTION)) ||
     !(d.expiresAt instanceof Date) ||
     !subset(approved, d.allowedActions) ||
     typeof d.policyVersion !== "string" ||
@@ -155,14 +157,23 @@ export async function createDelegation(
     }
     const { rows: principals } = await client.query<{
       id: string;
+      type: string;
       status: string;
+      owner_application_id: string | null;
     }>(
-      "SELECT id, status FROM principals WHERE tenant_id = $1 AND id = ANY($2) FOR SHARE",
+      "SELECT id, type, status, owner_application_id FROM principals WHERE tenant_id = $1 AND id = ANY($2) FOR SHARE",
       [input.tenantId, [input.initiatingPrincipalId, input.actorPrincipalId]],
     );
     if (principals.length !== 2) throw new DelegationError("unknown_principal");
     if (principals.some((p) => p.status !== "active"))
       throw new DelegationError("principal_inactive");
+    const actor = principals.find((p) => p.id === input.actorPrincipalId);
+    if (
+      actor?.type === "agent"
+        ? actor.owner_application_id !== input.applicationId
+        : actor?.type !== "service"
+    )
+      throw new DelegationError("invalid_actor");
     await client.query(
       `INSERT INTO delegations
          (id, tenant_id, initiating_principal_id, actor_principal_id, application_id,

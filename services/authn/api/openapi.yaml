@@ -140,8 +140,10 @@ paths:
       summary: Delegate a task scope to an actor and get a token for it.
       description: >
         The bearer is a bae6-authn token. With a direct token the caller is the initiator and
-        creates a root delegation; approvedActions are its approval of high-impact actions.
-        With a delegated token the caller is that delegation's actor and may only nest under
+        creates a root delegation; approvedActions are its approval of high-impact actions,
+        accepted only from a signed-in user's session token. The actor must be a service or an
+        agent owned by applicationId. The token keeps the caller's session, so it stops
+        re-exchanging once that session ends. With a delegated token the caller is that delegation's actor and may only nest under
         it (parentDelegationId must be the token's delegation_id), narrowing scope and expiry.
         The returned token names the initiator as `sub` and the actor as `act`, and carries the
         scope as `delegated_resources` and `delegated_actions`. Not offered unless the

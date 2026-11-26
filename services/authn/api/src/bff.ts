@@ -54,6 +54,7 @@ const DELEGATION_STATUS: Record<DelegationErrorCode, number> = {
   invalid_request: 400,
   unknown_principal: 400,
   principal_inactive: 400,
+  invalid_actor: 400,
   exceeds_limit: 400,
   unknown_parent: 404,
   exceeds_parent: 403,
@@ -415,6 +416,7 @@ export function createBffRoutes(deps: BffDeps) {
       typeof audience !== "string" ||
       (parentDelegationId !== undefined &&
         typeof parentDelegationId !== "string") ||
+      (approvedActions !== undefined && !Array.isArray(approvedActions)) ||
       !Number.isInteger(expiresInSeconds) ||
       (expiresInSeconds as number) < 1
     )
@@ -433,6 +435,17 @@ export function createBffRoutes(deps: BffDeps) {
         403,
         "forbidden",
         "A delegated caller may only nest under its own delegation.",
+      );
+    if (
+      parentDelegationId === undefined &&
+      Array.isArray(approvedActions) &&
+      approvedActions.length > 0 &&
+      (claims.principal_type !== "user" || claims.session_id === undefined)
+    )
+      throw new HttpError(
+        403,
+        "approval_required",
+        "Only a signed-in user may approve high-impact actions.",
       );
     const expiresAt = new Date(
       Date.now() + (expiresInSeconds as number) * 1000,
@@ -485,10 +498,12 @@ export function createBffRoutes(deps: BffDeps) {
             cost_center_id: claims.cost_center_id,
           }),
           ...(claims.trace_id && { trace_id: claims.trace_id }),
+          ...(claims.session_id && { session_id: claims.session_id }),
           notAfter: Math.floor(expiresAt.getTime() / 1000),
         },
       );
     } catch (err) {
+      await revokeDelegation(db, tenantId, id, claims.sub);
       if (err instanceof OAuthError)
         throw new HttpError(400, "invalid_request", "Token refused.");
       if (err instanceof KeyError)
