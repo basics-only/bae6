@@ -186,6 +186,7 @@ test(
     assert.equal(claims.sub, ALICE);
     assert.equal(claims.txn, "req-42");
     assert.equal(claims.principal_type, "user");
+    assert.equal(claims.application_id, "console");
     assert.deepEqual(claims.org_path, ["acme", "finance"]);
     assert.match(claims.session_id ?? "", /^ses_/);
   },
