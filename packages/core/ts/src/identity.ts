@@ -101,11 +101,13 @@ export interface Bae6TokenClaims {
   tenant_id: string;
   org_path: string[];
   principal_type: PrincipalType;
-  act?: { sub: string };
+  act?: { sub: string; principal_type: "agent" | "service" };
   application_id?: string;
   session_id?: string;
   task_id?: string;
   delegation_id?: string;
+  delegated_resources?: string[];
+  delegated_actions?: string[];
   cost_center_id?: string;
   trace_id?: string;
 }

@@ -1,19 +1,18 @@
 import { randomBytes } from "node:crypto";
 import type { Pool } from "pg";
+import { ACTION, MAX_DELEGATED, RESOURCE } from "./tokens.js";
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const TASK_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const PRINCIPAL_ID = /^prn_[0-9a-f]{32}$/;
 const DELEGATION_ID = /^dlg_[0-9a-f]{32}$/;
-const RESOURCE =
-  /^(application|api|model|agent|prompt|mcp_server|tool|dataset|document|service):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const ACTION = /^[a-z][a-z0-9_]{0,31}:[a-z][a-z0-9_]{0,31}$/;
 const MAX_DEPTH = 8;
 
 export type DelegationErrorCode =
   | "invalid_request"
   | "unknown_principal"
   | "principal_inactive"
+  | "invalid_actor"
   | "unknown_parent"
   | "exceeds_parent"
   | "exceeds_limit"
@@ -81,9 +80,10 @@ function validate(limits: DelegationLimits, d: NewDelegation) {
     !TASK_ID.test(d.taskId) ||
     (d.parentDelegationId !== undefined &&
       !DELEGATION_ID.test(d.parentDelegationId)) ||
-    !distinct(d.allowedResources, 100, RESOURCE) ||
-    !distinct(d.allowedActions, 50, ACTION) ||
+    !distinct(d.allowedResources, MAX_DELEGATED, RESOURCE) ||
+    !distinct(d.allowedActions, MAX_DELEGATED, ACTION) ||
     !Array.isArray(approved) ||
+    (approved.length > 0 && !distinct(approved, MAX_DELEGATED, ACTION)) ||
     !(d.expiresAt instanceof Date) ||
     !subset(approved, d.allowedActions) ||
     typeof d.policyVersion !== "string" ||
@@ -118,7 +118,7 @@ export async function createDelegation(
   db: Pool,
   limits: DelegationLimits,
   input: NewDelegation,
-): Promise<{ id: string }> {
+): Promise<{ id: string; actorType: "agent" | "service" }> {
   validate(limits, input);
   const id = `dlg_${randomBytes(16).toString("hex")}`;
   const client = await db.connect();
@@ -157,14 +157,25 @@ export async function createDelegation(
     }
     const { rows: principals } = await client.query<{
       id: string;
+      type: string;
       status: string;
+      owner_application_id: string | null;
     }>(
-      "SELECT id, status FROM principals WHERE tenant_id = $1 AND id = ANY($2) FOR SHARE",
+      "SELECT id, type, status, owner_application_id FROM principals WHERE tenant_id = $1 AND id = ANY($2) FOR SHARE",
       [input.tenantId, [input.initiatingPrincipalId, input.actorPrincipalId]],
     );
     if (principals.length !== 2) throw new DelegationError("unknown_principal");
     if (principals.some((p) => p.status !== "active"))
       throw new DelegationError("principal_inactive");
+    const actor = principals.find((p) => p.id === input.actorPrincipalId);
+    const actorType =
+      actor?.type === "agent" &&
+      actor.owner_application_id === input.applicationId
+        ? "agent"
+        : actor?.type === "service"
+          ? "service"
+          : undefined;
+    if (!actorType) throw new DelegationError("invalid_actor");
     await client.query(
       `INSERT INTO delegations
          (id, tenant_id, initiating_principal_id, actor_principal_id, application_id,
@@ -188,7 +199,7 @@ export async function createDelegation(
       ],
     );
     await client.query("COMMIT");
-    return { id };
+    return { id, actorType };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {
       broken = true;
@@ -203,7 +214,8 @@ export async function revokeDelegation(
   db: Pool,
   tenantId: string,
   id: string,
-): Promise<number> {
+  initiator: string,
+): Promise<number | undefined> {
   const client = await db.connect();
   let broken = false;
   try {
@@ -212,19 +224,26 @@ export async function revokeDelegation(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
       [`delegations:${tenantId}`],
     );
-    const { rowCount } = await client.query(
-      `WITH RECURSIVE tree AS (
-         SELECT id FROM delegations WHERE tenant_id = $1 AND id = $2
+    const { rows } = await client.query<{ found: boolean; revoked: number }>(
+      `WITH RECURSIVE root AS (
+         SELECT id FROM delegations
+          WHERE tenant_id = $1 AND id = $2 AND initiating_principal_id = $3
+       ), tree AS (
+         SELECT id FROM root
          UNION ALL
          SELECT d.id FROM delegations d JOIN tree t ON d.parent_id = t.id
           WHERE d.tenant_id = $1
+       ), updated AS (
+         UPDATE delegations SET revoked_at = now()
+          WHERE id IN (SELECT id FROM tree) AND revoked_at IS NULL
+          RETURNING id
        )
-       UPDATE delegations SET revoked_at = now()
-        WHERE id IN (SELECT id FROM tree) AND revoked_at IS NULL`,
-      [tenantId, id],
+       SELECT EXISTS (SELECT FROM root) AS found,
+              (SELECT count(*)::int FROM updated) AS revoked`,
+      [tenantId, id, initiator],
     );
     await client.query("COMMIT");
-    return rowCount ?? 0;
+    return rows[0]?.found ? rows[0].revoked : undefined;
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {
       broken = true;

@@ -179,7 +179,16 @@ test("minting refuses claims outside the contract", { skip }, async () => {
     { org_path: ["globex"] },
     { org_path: [] },
     { delegation_id: `dlg_${"0".repeat(32)}` },
-    { act: { sub: ALICE, extra: 1 } as never },
+    {
+      delegation_id: `dlg_${"0".repeat(32)}`,
+      act: { sub: ALICE, principal_type: "agent" as const },
+      task_id: "t",
+      delegated_actions: ["model:invoke"],
+    },
+    { delegated_resources: ["model:llm"], delegated_actions: ["model:invoke"] },
+    { act: { sub: ALICE, principal_type: "agent", extra: 1 } as never },
+    { act: { sub: ALICE } as never },
+    { act: { sub: ALICE, principal_type: "user" } as never },
     { surprise: true } as never,
   ])
     await assert.rejects(mint(bad), { message: /invalid claim/ });
@@ -369,7 +378,7 @@ test(
   { skip },
   async () => {
     const subject = await mint({
-      act: { sub: AGENT },
+      act: { sub: AGENT, principal_type: "agent" },
       session_id: LIVE_SESSION,
       notAfter: Math.floor(Date.now() / 1000) + 120,
     });
@@ -475,9 +484,11 @@ test(
       mint(
         Object.fromEntries(
           Object.entries({
-            act: { sub: AGENT },
+            act: { sub: AGENT, principal_type: "agent" },
             task_id: "task-1",
             application_id: "helper",
+            delegated_resources: ["model:finance-llm"],
+            delegated_actions: ["model:invoke"],
             ...claims,
           }).filter(([, v]) => v !== undefined),
         ),
@@ -495,17 +506,26 @@ test(
       audience: "data-api",
     });
     assert.equal(issued.delegation_id, id);
+    assert.deepEqual(issued.delegated_resources, ["model:finance-llm"]);
+    assert.deepEqual(issued.delegated_actions, ["model:invoke"]);
     assert.ok(issued.exp <= Math.floor(Date.now() / 1000) + 120);
     for (const claims of [
       { delegation_id: `dlg_${"0".repeat(32)}` },
       { delegation_id: id, task_id: "task-2" },
       { delegation_id: id, application_id: "other-app" },
       { delegation_id: id, application_id: undefined },
-      { delegation_id: id, act: { sub: LEAVER } },
+      {
+        delegation_id: id,
+        act: { sub: LEAVER, principal_type: "agent" as const },
+      },
+      {
+        delegation_id: id,
+        act: { sub: AGENT, principal_type: "service" as const },
+      },
       { delegation_id: id, sub: LEAVER },
     ])
       await oauthError(exchange(claims), "invalid_request");
-    await revokeDelegation(db, "acme", id);
+    await revokeDelegation(db, "acme", id, ALICE);
     await oauthError(exchange({ delegation_id: id }), "invalid_request");
     const { id: expiring } = await delegate({ taskId: "task-e" });
     await db.query(
@@ -528,7 +548,7 @@ test(
       expiresAt: shared,
     });
     await exchange({ delegation_id: child, task_id: "task-n" });
-    await revokeDelegation(db, "acme", parent);
+    await revokeDelegation(db, "acme", parent, ALICE);
     await oauthError(
       exchange({ delegation_id: child, task_id: "task-n" }),
       "invalid_request",
@@ -541,7 +561,9 @@ test(
   { skip },
   async () => {
     const forLeaver = await mint({ sub: LEAVER, org_path: ["acme"] });
-    const actedByAgent = await mint({ act: { sub: AGENT } });
+    const actedByAgent = await mint({
+      act: { sub: AGENT, principal_type: "agent" },
+    });
     await db.query(
       "UPDATE principals SET status = 'disabled' WHERE id = ANY($1)",
       [[LEAVER, AGENT]],

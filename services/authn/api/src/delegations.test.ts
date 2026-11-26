@@ -112,6 +112,15 @@ test(
       }),
       "invalid_request",
     );
+    await refused(create({ applicationId: "other-app" }), "invalid_actor");
+    await refused(
+      create({ initiatingPrincipalId: AGENT, actorPrincipalId: ALICE }),
+      "invalid_actor",
+    );
+    await refused(
+      create({ approvedActions: ["model:invoke", "model:invoke"] }),
+      "invalid_request",
+    );
     await refused(create({ actorPrincipalId: GONE }), "principal_inactive");
     await refused(create({ actorPrincipalId: STRANGER }), "unknown_principal");
     await refused(
@@ -251,11 +260,11 @@ test(
       expiresAt: soon,
     });
     const { id: sibling } = await create({ taskId: "task-s" });
-    assert.equal(await revokeDelegation(db, "other", root), 0);
-    assert.equal(await revokeDelegation(db, "acme", mid), 2);
+    assert.equal(await revokeDelegation(db, "other", root, ALICE), undefined);
+    assert.equal(await revokeDelegation(db, "acme", mid, ALICE), 2);
     assert.equal(await revokedAt(root), null);
     assert.notEqual(await revokedAt(leaf), null);
-    assert.equal(await revokeDelegation(db, "acme", mid), 0);
+    assert.equal(await revokeDelegation(db, "acme", mid, ALICE), 0);
     assert.equal(await revokedAt(sibling), null);
     await refused(
       create({
@@ -267,6 +276,27 @@ test(
       }),
       "unknown_parent",
     );
-    assert.equal(await revokeDelegation(db, "acme", root), 1);
+    assert.equal(await revokeDelegation(db, "acme", root, ALICE), 1);
+  },
+);
+
+test(
+  "revoking reaches every descendant even if one names another initiator",
+  { skip },
+  async () => {
+    const { id: root } = await create({ taskId: "task-x" });
+    const { id: child } = await create({
+      taskId: "task-x",
+      createdByPrincipalId: AGENT,
+      parentDelegationId: root,
+      actorPrincipalId: AGENT2,
+      expiresAt: soon,
+    });
+    await db.query(
+      "UPDATE delegations SET initiating_principal_id = $1 WHERE id = $2",
+      [AGENT, child],
+    );
+    assert.equal(await revokeDelegation(db, "acme", root, ALICE), 2);
+    assert.notEqual(await revokedAt(child), null);
   },
 );

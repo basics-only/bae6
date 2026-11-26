@@ -6,6 +6,7 @@ from bae6_authn.client import (
     AuthnTimeoutError,
     AuthnTransportError,
     AuthnValidationError,
+    Delegation,
     Me,
     Token,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "AuthnTimeoutError",
     "AuthnTransportError",
     "AuthnValidationError",
+    "Delegation",
     "Me",
     "Token",
 ]
