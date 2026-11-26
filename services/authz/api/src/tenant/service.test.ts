@@ -233,6 +233,52 @@ test(
 );
 
 test(
+  "only an access admin of a resource's unit grants and revokes access to it",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client }) => {
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.createUnit(ROOTADM, "software", "acme");
+      await svc.setCeiling(ROOTADM, "access", "finance", true);
+      await svc.grant(ROOTADM, "access", FIN, "finance");
+      await svc.placeResource(ROOTADM, "model", "ledger", "finance");
+      await svc.placeResource(ROOTADM, "model", "code", "software");
+      const invokes = (object: string) =>
+        allowed(client, "user:alice", "can_invoke", object);
+
+      await assert.rejects(
+        svc.setAccess(FIN, "model", "code", "user:alice", true),
+        status(403),
+      );
+      await assert.rejects(
+        svc.setAccess(FIN, "model", "ledger", "user:*", true),
+        status(400),
+      );
+      await svc.setAccess(FIN, "model", "ledger", "user:alice", true);
+      assert.equal(await invokes("model:ledger"), true);
+      assert.equal(await invokes("model:code"), false);
+      await svc.setAccess(FIN, "model", "ledger", "user:alice", false);
+      assert.equal(await invokes("model:ledger"), false);
+
+      const projected = { relation: "unit", object: "model:code" };
+      await client.write({
+        writes: [{ ...projected, user: "org_unit:finance" }],
+        deletes: [{ ...projected, user: "org_unit:software" }],
+      });
+      await assert.rejects(
+        svc.setAccess(FIN, "model", "code", "user:alice", true),
+        status(403),
+        "drifted projection does not move the registered unit",
+      );
+      await assert.rejects(
+        svc.setAccess(ROOTADM, "model", "unplaced", "user:alice", true),
+        status(403),
+      );
+    });
+  },
+);
+
+test(
   "resource placement retries a failed projection and repairs unit drift",
   opts,
   async () => {
