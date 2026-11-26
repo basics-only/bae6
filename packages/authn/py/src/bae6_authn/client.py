@@ -49,6 +49,13 @@ class Token:
 
 
 @dataclass(frozen=True)
+class Delegation:
+    delegation_id: str
+    expires_at: str
+    token: Token
+
+
+@dataclass(frozen=True)
 class Me:
     principal: Principal
     org_path: list[str]
@@ -187,6 +194,62 @@ class Authn:
         )
         if response.status_code != 204:
             raise _invalid_response()
+
+    async def create_delegation(
+        self,
+        token: str,
+        *,
+        actor_principal_id: str,
+        application_id: str,
+        task_id: str,
+        allowed_resources: list[str],
+        allowed_actions: list[str],
+        expires_in_seconds: int,
+        audience: str,
+        parent_delegation_id: str | None = None,
+        approved_actions: list[str] | None = None,
+    ) -> Delegation:
+        """Delegates a task scope to an actor; `token` is the caller's bae6-authn token."""
+        if not token:
+            raise ValueError("token must not be empty")
+        payload: dict[str, object] = {
+            "actorPrincipalId": actor_principal_id,
+            "applicationId": application_id,
+            "taskId": task_id,
+            "allowedResources": allowed_resources,
+            "allowedActions": allowed_actions,
+            "expiresInSeconds": expires_in_seconds,
+            "audience": audience,
+        }
+        if parent_delegation_id is not None:
+            payload["parentDelegationId"] = parent_delegation_id
+        if approved_actions is not None:
+            payload["approvedActions"] = approved_actions
+        body = await self._http.json(
+            "POST",
+            "/v1/delegations",
+            headers={"authorization": f"Bearer {token}"},
+            body=payload,
+        )
+        issued = body.get("token") if isinstance(body, dict) else None
+        delegation_id = body.get("delegationId") if isinstance(body, dict) else None
+        expires_at = body.get("expiresAt") if isinstance(body, dict) else None
+        access = issued.get("access_token") if isinstance(issued, dict) else None
+        expires_in = issued.get("expires_in") if isinstance(issued, dict) else None
+        if (
+            not isinstance(delegation_id, str)
+            or re.fullmatch(r"dlg_[0-9a-f]{32}", delegation_id) is None
+            or not isinstance(expires_at, str)
+            or not isinstance(access, str)
+            or type(expires_in) is not int
+            or expires_in < 1
+        ):
+            raise _invalid_response()
+        return Delegation(
+            delegation_id=delegation_id,
+            expires_at=expires_at,
+            token=Token(access_token=access, expires_in=expires_in),
+        )
 
     async def place_principal(
         self, *, tenant_id: str, principal_id: str, principal_type: str, org_path: list[str]

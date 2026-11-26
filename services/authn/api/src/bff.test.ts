@@ -18,7 +18,7 @@ import { OidcError } from "./oidc.js";
 import { PrincipalError, setPrincipalStatus } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { createSession, readSession, SESSION_COOKIE } from "./sessions.js";
-import { type MintInput, mintToken } from "./tokens.js";
+import { type MintInput, mintToken, verifyToken } from "./tokens.js";
 
 const url = process.env.BAE6_DATABASE_URL;
 const skip = url ? false : "BAE6_DATABASE_URL not set";
@@ -95,6 +95,16 @@ before(async () => {
       tenantsByHost,
       sessionTtlSeconds: 3600,
       issuer: AUTHN_ISSUER,
+      delegation: {
+        signers,
+        audiences: new Set([AUTHN_AUDIENCE, "bae6-authz"]),
+        policyVersion: "test-model",
+        limits: {
+          maxDepth: 3,
+          maxLifetimeSeconds: 3600,
+          highImpact: (action) => action === "tool:delete",
+        },
+      },
     }),
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -249,7 +259,7 @@ test(
     const helper = `prn_${"8".repeat(32)}`;
     const outsider = `prn_${"6".repeat(32)}`;
     await db.query(
-      `INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'acme', 'user'), ($2, 'globex', 'user')`,
+      `INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'acme', 'service'), ($2, 'globex', 'user')`,
       [helper, outsider],
     );
     const token = async (claims: Partial<MintInput> = {}) =>
@@ -273,7 +283,17 @@ test(
     assert.equal(ok.status, 200);
     assert.equal((await ok.json()).principal.id, s.principalId);
     assert.equal((await me("Basic abc", base, cookie)).status, 200);
-    const acted = await token({ act: { sub: helper } });
+    const acted = await token({
+      act: { sub: helper, principal_type: "service" },
+    });
+    assert.equal(
+      (
+        await me(
+          `Bearer ${await token({ act: { sub: helper, principal_type: "agent" } })}`,
+        )
+      ).status,
+      401,
+    );
     assert.equal((await me(`Bearer ${acted}`)).status, 200);
     await db.query("UPDATE principals SET status = 'disabled' WHERE id = $1", [
       helper,
@@ -776,10 +796,12 @@ test(
         await revoke(
           root,
           await tokenFor(owner, {
-            act: { sub: actor },
+            act: { sub: actor, principal_type: "agent" },
             task_id: common.taskId,
             application_id: "helper",
             delegation_id: root,
+            delegated_resources: common.allowedResources,
+            delegated_actions: common.allowedActions,
           }),
         )
       ).status,
@@ -805,5 +827,158 @@ test(
     assert.equal((await revoke(root, ownerToken)).status, 204);
     assert.equal((await revoked()).rowCount, 2);
     assert.equal((await revoke(root, ownerToken)).status, 204);
+  },
+);
+
+test(
+  "a user delegates a task scope to an agent and the agent may only narrow it under its own delegation",
+  { skip },
+  async () => {
+    const owner = await readSession(
+      db,
+      sessionCookie(await signIn("delegator")).split("=")[1],
+    );
+    assert.ok(owner);
+    const [agent, helper] = [1, 2].map(
+      () => `prn_${randomBytes(16).toString("hex")}`,
+    ) as [string, string];
+    await db.query(
+      `INSERT INTO principals (id, tenant_id, type, owner_application_id)
+       VALUES ($1, 'acme', 'agent', 'helper'), ($2, 'acme', 'agent', 'helper')`,
+      [agent, helper],
+    );
+    const ownerToken = (
+      await mintToken(db, signers, AUTHN_ISSUER, {
+        aud: AUTHN_AUDIENCE,
+        sub: owner.principalId,
+        txn: "delegate-test",
+        tenant_id: "acme",
+        org_path: ["acme"],
+        principal_type: "user",
+        session_id: owner.id,
+      })
+    ).token;
+    const scope = {
+      actorPrincipalId: agent,
+      applicationId: "helper",
+      taskId: "summarize",
+      allowedResources: ["model:llm", "document:d1"],
+      allowedActions: ["model:invoke", "document:read"],
+      expiresInSeconds: 120,
+      audience: AUTHN_AUDIENCE,
+    };
+    const delegate = (body: Record<string, unknown>, token?: string) =>
+      fetch(`${base}/v1/delegations`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+    const created = await delegate(scope, ownerToken);
+    assert.equal(created.status, 201);
+    const { delegationId, token } = await created.json();
+    const claims = await verifyToken(db, token.access_token, {
+      issuer: AUTHN_ISSUER,
+      audience: AUTHN_AUDIENCE,
+    });
+    assert.equal(claims.sub, owner.principalId);
+    assert.deepEqual(claims.act, { sub: agent, principal_type: "agent" });
+    assert.equal(claims.delegation_id, delegationId);
+    assert.equal(claims.task_id, "summarize");
+    assert.deepEqual(claims.delegated_resources, scope.allowedResources);
+    assert.deepEqual(claims.delegated_actions, scope.allowedActions);
+    assert.equal(claims.session_id, owner.id);
+    assert.ok(claims.exp <= Math.floor(Date.now() / 1000) + 120);
+
+    const sessionless = (
+      await mintToken(db, signers, AUTHN_ISSUER, {
+        aud: AUTHN_AUDIENCE,
+        sub: owner.principalId,
+        txn: "delegate-test",
+        tenant_id: "acme",
+        org_path: ["acme"],
+        principal_type: "user",
+      })
+    ).token;
+    const risky = {
+      ...scope,
+      allowedActions: ["tool:delete"],
+      approvedActions: ["tool:delete"],
+    };
+    for (const [body, status, bearer] of [
+      [scope, 401, undefined],
+      [{ ...scope, audience: "nobody" }, 400, ownerToken],
+      [{ ...scope, applicationId: undefined }, 400, ownerToken],
+      [{ ...scope, applicationId: "other-app" }, 400, ownerToken],
+      [{ ...scope, expiresInSeconds: 7200 }, 400, ownerToken],
+      [{ ...scope, approvedActions: null }, 400, ownerToken],
+      [
+        { ...risky, approvedActions: ["tool:delete", "tool:delete"] },
+        400,
+        ownerToken,
+      ],
+      [{ ...scope, allowedActions: ["tool:delete"] }, 403, ownerToken],
+      [risky, 403, sessionless],
+      [{ ...scope, parentDelegationId: delegationId }, 403, ownerToken],
+    ] as const)
+      assert.equal(
+        (await delegate(body, bearer)).status,
+        status,
+        JSON.stringify(body),
+      );
+    assert.equal((await delegate(risky, ownerToken)).status, 201);
+
+    const nested = {
+      ...scope,
+      actorPrincipalId: helper,
+      parentDelegationId: delegationId,
+      allowedResources: ["document:d1"],
+      allowedActions: ["document:read"],
+      expiresInSeconds: 60,
+      audience: "bae6-authz",
+    };
+    const agentToken = token.access_token;
+    assert.equal(
+      (
+        await delegate(
+          { ...nested, allowedResources: ["document:d2"] },
+          agentToken,
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await delegate(
+          { ...nested, parentDelegationId: `dlg_${"0".repeat(32)}` },
+          agentToken,
+        )
+      ).status,
+      403,
+    );
+    const child = await delegate(nested, agentToken);
+    assert.equal(child.status, 201);
+    const childClaims = await verifyToken(
+      db,
+      (await child.json()).token.access_token,
+      { issuer: AUTHN_ISSUER, audience: "bae6-authz" },
+    );
+    assert.equal(childClaims.sub, owner.principalId);
+    assert.deepEqual(childClaims.act, { sub: helper, principal_type: "agent" });
+    assert.equal(childClaims.session_id, owner.id);
+
+    assert.equal(
+      (
+        await fetch(`${base}/v1/delegations/${delegationId}/revoke`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${ownerToken}` },
+        })
+      ).status,
+      204,
+    );
+    assert.equal((await delegate(nested, agentToken)).status, 404);
   },
 );

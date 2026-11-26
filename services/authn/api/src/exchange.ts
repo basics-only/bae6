@@ -21,6 +21,8 @@ const CARRIED = [
   "session_id",
   "task_id",
   "delegation_id",
+  "delegated_resources",
+  "delegated_actions",
   "cost_center_id",
   "trace_id",
 ] as const;
@@ -191,7 +193,8 @@ export async function exchangeToken(
   const principals: { id: string; type?: string }[] = [
     { id: subject.sub, type: subject.principal_type },
   ];
-  if (subject.act) principals.push({ id: subject.act.sub });
+  if (subject.act)
+    principals.push({ id: subject.act.sub, type: subject.act.principal_type });
   if (
     subject.exp <= Math.floor(Date.now() / 1000) ||
     !(await allActive(deps.db, subject.tenant_id, principals)) ||
@@ -257,8 +260,8 @@ export async function exchangeSession(
   });
 }
 
-async function issue(
-  deps: ExchangeDeps,
+export async function issue(
+  deps: Pick<ExchangeDeps, "db" | "signers" | "issuer">,
   input: MintInput,
 ): Promise<TokenResponse> {
   let minted: Awaited<ReturnType<typeof mintToken>>;

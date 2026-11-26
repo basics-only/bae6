@@ -112,6 +112,15 @@ test(
       }),
       "invalid_request",
     );
+    await refused(create({ applicationId: "other-app" }), "invalid_actor");
+    await refused(
+      create({ initiatingPrincipalId: AGENT, actorPrincipalId: ALICE }),
+      "invalid_actor",
+    );
+    await refused(
+      create({ approvedActions: ["model:invoke", "model:invoke"] }),
+      "invalid_request",
+    );
     await refused(create({ actorPrincipalId: GONE }), "principal_inactive");
     await refused(create({ actorPrincipalId: STRANGER }), "unknown_principal");
     await refused(

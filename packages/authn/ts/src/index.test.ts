@@ -269,6 +269,44 @@ test("revokeDelegation uses the initiating principal bearer and expects no conte
   }
 });
 
+test("createDelegation sends the scope with the caller's bearer and returns the actor's token", async () => {
+  const id = `dlg_${"c".repeat(32)}`;
+  const s = await serve(201, {
+    delegationId: id,
+    expiresAt: "2026-11-25T12:00:00.000Z",
+    token: {
+      access_token: "delegated",
+      issued_token_type: "urn:ietf:params:oauth:token-type:jwt",
+      token_type: "Bearer",
+      expires_in: 120,
+    },
+  });
+  const input = {
+    actorPrincipalId: `prn_${"a".repeat(32)}`,
+    applicationId: "helper",
+    taskId: "summarize",
+    allowedResources: ["model:llm"],
+    allowedActions: ["model:invoke"],
+    expiresInSeconds: 120,
+    audience: "bae6-authz",
+  };
+  try {
+    assert.deepEqual(await s.authn.createDelegation("user-token", input), {
+      delegationId: id,
+      expiresAt: "2026-11-25T12:00:00.000Z",
+      token: { accessToken: "delegated", expiresIn: 120 },
+    });
+    const [req] = s.seen;
+    assert.equal(req?.method, "POST");
+    assert.equal(req?.url, "/v1/delegations");
+    assert.equal(req?.headers.authorization, "Bearer user-token");
+    assert.deepEqual(JSON.parse(req?.body ?? ""), input);
+    await assert.rejects(s.authn.createDelegation("", input), TypeError);
+  } finally {
+    await s.close();
+  }
+});
+
 test("revokeDelegation refuses a malformed ID locally and reports an unknown delegation", async () => {
   const s = await serve(404, { code: "not_found", message: "Not found." });
   try {

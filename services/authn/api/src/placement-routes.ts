@@ -14,7 +14,7 @@ const STATUS: Record<string, number> = {
   invalid_transition: 409,
 };
 
-async function readJson(
+export async function readJson(
   req: IncomingMessage,
 ): Promise<Record<string, unknown>> {
   const type = req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();

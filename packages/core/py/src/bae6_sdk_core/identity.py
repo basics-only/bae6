@@ -86,6 +86,7 @@ class ExecutionContext(TypedDict):
 
 class Actor(TypedDict):
     sub: str
+    principal_type: Literal["agent", "service"]
 
 
 class Bae6TokenClaims(TypedDict):
@@ -105,6 +106,8 @@ class Bae6TokenClaims(TypedDict):
     session_id: NotRequired[str]
     task_id: NotRequired[str]
     delegation_id: NotRequired[str]
+    delegated_resources: NotRequired[list[str]]
+    delegated_actions: NotRequired[list[str]]
     cost_center_id: NotRequired[str]
     trace_id: NotRequired[str]
 

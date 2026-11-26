@@ -19,6 +19,7 @@ import type { ConnectionPolicy } from "./principals.js";
 import { createAuthnApi } from "./server.js";
 import { MAX_SESSION_TTL_SECONDS } from "./sessions.js";
 import { createTokenRoutes } from "./token-routes.js";
+import { ACTION } from "./tokens.js";
 
 const env = process.env;
 const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));
@@ -243,6 +244,37 @@ await rotateKeys();
 const rotation = setInterval(rotateKeys, 60_000);
 rotation.unref();
 
+const policyVersion = env.BAE6_TENANT_MODEL_ID;
+const highImpact = new Set(
+  (env.BAE6_DELEGATION_HIGH_IMPACT_ACTIONS ?? "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean),
+);
+if (highImpact.size > 50 || ![...highImpact].every((a) => ACTION.test(a)))
+  throw new Error(
+    "BAE6_DELEGATION_HIGH_IMPACT_ACTIONS must be up to 50 type:verb actions",
+  );
+const delegation = policyVersion
+  ? {
+      signers,
+      audiences,
+      policyVersion,
+      limits: {
+        maxLifetimeSeconds: int(
+          "BAE6_DELEGATION_MAX_LIFETIME_SECONDS",
+          3600,
+          60,
+          86_400,
+        ),
+        maxDepth: int("BAE6_DELEGATION_MAX_DEPTH", 3, 1, 8),
+        highImpact: (action: string) => highImpact.has(action),
+      },
+    }
+  : undefined;
+if (policyVersion && policyVersion.length > 64)
+  throw new Error("BAE6_TENANT_MODEL_ID must be at most 64 characters");
+
 const bff = createBffRoutes({
   db: pool,
   provider,
@@ -251,6 +283,7 @@ const bff = createBffRoutes({
   issuer,
   allowHttp,
   httpOrigin,
+  ...(delegation && { delegation }),
 });
 const tokens = createTokenRoutes({
   db: pool,
