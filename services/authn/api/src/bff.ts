@@ -5,6 +5,7 @@ import {
   type GraphOptions,
   overageGroups,
 } from "./adapters.js";
+import { revokeDelegation } from "./delegations.js";
 import { allActive, sessionLive } from "./exchange.js";
 import { HttpError, send } from "./http.js";
 import {
@@ -38,6 +39,8 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const RETURN_TO = /^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]{0,1023}$/;
 const OPAQUE = /^[A-Za-z0-9_-]{1,128}$/;
 const ROUTE = /^\/auth\/(login|callback)\/([^/]+)$/;
+
+const REVOKE_DELEGATION = /^\/v1\/delegations\/(dlg_[0-9a-f]{32})\/revoke$/;
 
 export type LoginProvider = Pick<
   OidcProvider,
@@ -278,7 +281,11 @@ export function createBffRoutes(deps: BffDeps) {
 
   const issuerHost = new URL(deps.issuer).host;
 
-  async function bearerCaller(req: IncomingMessage, authorization: string) {
+  async function bearerCaller(
+    req: IncomingMessage,
+    authorization: string,
+    directOnly = false,
+  ) {
     const viaIssuer = hostOf(req) === issuerHost;
     const hostTenant = viaIssuer ? undefined : site(req).tenantId;
     const token = BEARER.exec(authorization)?.[1];
@@ -298,6 +305,11 @@ export function createBffRoutes(deps: BffDeps) {
       if (err instanceof TokenError) throw unauthenticated;
       throw err;
     }
+    if (
+      directOnly &&
+      (claims.act !== undefined || claims.delegation_id !== undefined)
+    )
+      throw unauthenticated;
     const principals: { id: string; type?: string }[] = [
       { id: claims.sub, type: claims.principal_type },
     ];
@@ -336,6 +348,17 @@ export function createBffRoutes(deps: BffDeps) {
       },
       orgPath,
     });
+  }
+
+  async function revoke(req: IncomingMessage, res: ServerResponse, id: string) {
+    const { tenantId, principalId } = await bearerCaller(
+      req,
+      req.headers.authorization ?? "",
+      true,
+    );
+    if ((await revokeDelegation(db, tenantId, id, principalId)) === undefined)
+      throw new HttpError(404, "not_found", "Delegation not found.");
+    res.writeHead(204, { "cache-control": "no-store" }).end();
   }
 
   async function providers(req: IncomingMessage, res: ServerResponse) {
@@ -393,6 +416,7 @@ export function createBffRoutes(deps: BffDeps) {
     url: URL,
   ): Promise<boolean> {
     const flow = ROUTE.exec(url.pathname);
+    const delegation = REVOKE_DELEGATION.exec(url.pathname)?.[1];
     try {
       if (req.method === "GET" && flow?.[1] === "login")
         await login(req, res, url, flow[2] as string);
@@ -404,6 +428,8 @@ export function createBffRoutes(deps: BffDeps) {
         await providers(req, res);
       else if (req.method === "POST" && url.pathname === "/auth/logout")
         await logout(req, res);
+      else if (req.method === "POST" && delegation)
+        await revoke(req, res, delegation);
       else return false;
     } catch (err) {
       throw asHttp(err);

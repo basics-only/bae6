@@ -203,7 +203,8 @@ export async function revokeDelegation(
   db: Pool,
   tenantId: string,
   id: string,
-): Promise<number> {
+  initiator: string,
+): Promise<number | undefined> {
   const client = await db.connect();
   let broken = false;
   try {
@@ -212,19 +213,26 @@ export async function revokeDelegation(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
       [`delegations:${tenantId}`],
     );
-    const { rowCount } = await client.query(
-      `WITH RECURSIVE tree AS (
-         SELECT id FROM delegations WHERE tenant_id = $1 AND id = $2
+    const { rows } = await client.query<{ found: boolean; revoked: number }>(
+      `WITH RECURSIVE root AS (
+         SELECT id FROM delegations
+          WHERE tenant_id = $1 AND id = $2 AND initiating_principal_id = $3
+       ), tree AS (
+         SELECT id FROM root
          UNION ALL
          SELECT d.id FROM delegations d JOIN tree t ON d.parent_id = t.id
           WHERE d.tenant_id = $1
+       ), updated AS (
+         UPDATE delegations SET revoked_at = now()
+          WHERE id IN (SELECT id FROM tree) AND revoked_at IS NULL
+          RETURNING id
        )
-       UPDATE delegations SET revoked_at = now()
-        WHERE id IN (SELECT id FROM tree) AND revoked_at IS NULL`,
-      [tenantId, id],
+       SELECT EXISTS (SELECT FROM root) AS found,
+              (SELECT count(*)::int FROM updated) AS revoked`,
+      [tenantId, id, initiator],
     );
     await client.query("COMMIT");
-    return rowCount ?? 0;
+    return rows[0]?.found ? rows[0].revoked : undefined;
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {
       broken = true;

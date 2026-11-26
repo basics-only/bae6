@@ -208,3 +208,33 @@ def test_place_principal_maps_refusals_to_typed_errors(
             ),
         )
     assert caught.value.status == status
+
+
+def test_revoke_delegation_uses_the_initiating_principal_bearer() -> None:
+    delegation_id = "dlg_" + "a" * 32
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == f"/v1/delegations/{delegation_id}/revoke"
+        assert request.headers["authorization"] == "Bearer initiator-token"
+        assert request.content == b""
+        return httpx.Response(204)
+
+    assert (
+        _run(handler, lambda authn: authn.revoke_delegation(delegation_id, "initiator-token"))
+        is None
+    )
+
+
+def test_revoke_delegation_refuses_a_malformed_id_locally_and_reports_an_unknown_one() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(404, json={"code": "not_found", "message": "Not found."})
+
+    with pytest.raises(ValueError):
+        _run(handler, lambda authn: authn.revoke_delegation("dlg_../x", "initiator-token"))
+    assert seen == []
+    with pytest.raises(AuthnApiError):
+        _run(handler, lambda authn: authn.revoke_delegation("dlg_" + "b" * 32, "initiator-token"))
