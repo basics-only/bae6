@@ -49,13 +49,14 @@ export interface UsageQuery {
   to: Date;
   groupBy: GroupBy | null;
   group: string | null;
-  /** Null only for platform callers asking across organizations. */
   organization: string | null;
   runIds: string[];
 }
 
 const invalid = (message: string) =>
   new HttpError(400, "invalid_request", message);
+const OWN_ORGANIZATION_ONLY =
+  "Usage is readable only in your own organization.";
 
 /** The window, grouping and organization a caller may ask for; throws 400 or 403 otherwise. */
 export function parseUsageQuery(
@@ -64,7 +65,6 @@ export function parseUsageQuery(
   series: boolean,
 ): UsageQuery {
   const q = url.searchParams;
-  const platform = who.scopes.includes("ai:usage:platform");
   const now = new Date();
   const time = (name: string, fallback: string) => {
     const v = q.get(name) ?? fallback;
@@ -84,18 +84,18 @@ export function parseUsageQuery(
   const org = q.get("organization");
   if (org !== null && !SLUG.test(org))
     throw invalid("organization is invalid.");
-  if (org !== null && org !== who.organizationId && !platform) {
-    throw new HttpError(403, "forbidden", "Missing scope ai:usage:platform.");
+  if (org !== null && org !== who.organizationId) {
+    throw new HttpError(403, "forbidden", OWN_ORGANIZATION_ONLY);
   }
-  const organization = platform ? org : who.organizationId;
+  const organization = who.organizationId;
 
   const g = q.get("groupBy");
   if (g !== null && !Object.hasOwn(GROUPS, g)) {
     throw invalid(`groupBy must be one of ${Object.keys(GROUPS).join(", ")}.`);
   }
   const groupBy = g as GroupBy | null;
-  if (groupBy === "organization" && !platform) {
-    throw new HttpError(403, "forbidden", "Missing scope ai:usage:platform.");
+  if (groupBy === "organization") {
+    throw new HttpError(403, "forbidden", OWN_ORGANIZATION_ONLY);
   }
 
   const group = q.get("group");

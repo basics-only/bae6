@@ -41,7 +41,7 @@ services:
     build:
       context: ..
       dockerfile: services/authn/api/Dockerfile
-    profiles: [authn, console, all]
+    profiles: [authn, ai, context, console, all]
     <<: *health
     environment:
       <<: *dev
@@ -55,6 +55,7 @@ services:
       BAE6_AUTHN_AUDIENCES: bae6-authn,bae6-authz,bae6-ai,eval-worker,agent-worker,data-api,embed-api,mcp-gateway,mcp-registry
       BAE6_AUTHN_SIGNING_KEYS: dev-signing.pem
       BAE6_AUTHN_SESSION_CLIENTS: console
+      BAE6_AUTHN_TOKEN_TARGETS: bae6-ai=bae6-authz
     volumes:
       - authn-keys:/run/secrets/authn-keys:ro
       - authn-secrets:/run/secrets/authn:ro
@@ -66,7 +67,7 @@ services:
 
   authn-keys:
     image: localhost/bae6-authn-api:dev
-    profiles: [authn, console, all]
+    profiles: [authn, ai, context, console, all]
     user: "0"
     command:
       - node
@@ -87,17 +88,21 @@ services:
         write("token-client-placement", () => crypto.randomBytes(32).toString("base64url"));
         fs.copyFileSync("/keys/token-client-placement", "/authz/authn-placement-secret");
         fs.chownSync("/authz/authn-placement-secret", 1000, 1000);
+        write("token-client-bae6-ai", () => crypto.randomBytes(32).toString("base64url"));
+        fs.copyFileSync("/keys/token-client-bae6-ai", "/ai/authn-client-secret");
+        fs.chownSync("/ai/authn-client-secret", 1000, 1000);
         fs.writeFileSync("/secrets/mock-idp-authn-client", "dev-only-authn-client", { mode: 0o600 });
         fs.chownSync("/secrets/mock-idp-authn-client", 1000, 1000);
     volumes:
       - authn-keys:/keys
       - console-authn:/console
       - authz-authn:/authz
+      - ai-authn:/ai
       - authn-secrets:/secrets
 
   authn-seed:
     image: localhost/bae6-authn-api:dev
-    profiles: [authn, console, all]
+    profiles: [authn, ai, context, console, all]
     environment:
       BAE6_AUTHN_DATABASE_URL: postgres://authn:${AUTHN_DB_PASSWORD:-dev-only-authn}@postgres:5432/authn
     command:
@@ -127,7 +132,23 @@ services:
             ON CONFLICT (tenant_id, id) DO UPDATE SET
               kind = EXCLUDED.kind, issuer = EXCLUDED.issuer, client_id = EXCLUDED.client_id,
               client_secret_ref = EXCLUDED.client_secret_ref, jit_provisioning = true,
-              display_name = EXCLUDED.display_name, status = 'active', updated_at = now()`);
+              display_name = EXCLUDED.display_name, status = 'active', updated_at = now();
+            INSERT INTO provider_connections
+              (tenant_id, id, kind, issuer, client_id, client_secret_ref, jit_provisioning, display_name)
+            VALUES ('acme', 'workloads', 'oidc', 'http://mock-oidc:8080', 'bae6-authn-workloads',
+                    'mock-idp-authn-client', false, 'Mock workloads')
+            ON CONFLICT (tenant_id, id) DO NOTHING;
+            INSERT INTO principals (id, tenant_id, type, owner_application_id) VALUES
+              ('prn_d0000000000000000000000000000001', 'acme', 'service', 'demo'),
+              ('prn_d0000000000000000000000000000002', 'acme', 'service', 'demo')
+            ON CONFLICT DO NOTHING;
+            INSERT INTO external_identities
+              (id, tenant_id, principal_id, provider_connection_id, issuer, subject, last_verified_at) VALUES
+              ('xid_d0000000000000000000000000000001', 'acme', 'prn_d0000000000000000000000000000001',
+               'workloads', 'http://mock-oidc:8080', 'embed-worker', now()),
+              ('xid_d0000000000000000000000000000002', 'acme', 'prn_d0000000000000000000000000000002',
+               'workloads', 'http://mock-oidc:8080', 'research-agent', now())
+            ON CONFLICT DO NOTHING`);
           await db.end();
         })().catch((err) => {
           console.error(err.message);
@@ -138,7 +159,7 @@ services:
 
   openfga-migrate:
     image: openfga/openfga:v1.10.2
-    profiles: [authz, all]
+    profiles: [authz, ai, context, all]
     command: migrate
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
@@ -149,7 +170,7 @@ services:
 
   openfga:
     image: openfga/openfga:v1.10.2
-    profiles: [authz, all]
+    profiles: [authz, ai, context, all]
     command: run
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
@@ -168,7 +189,7 @@ services:
     build:
       context: ..
       dockerfile: services/authz/api/Dockerfile
-    profiles: [authz, all]
+    profiles: [authz, ai, context, all]
     <<: *health
     environment:
       PORT: "8080"
@@ -281,11 +302,16 @@ services:
     command:
       - |
         while true; do
-          if body=$$(curl -sf -X POST http://mock-oidc:8080/token \
-            -d '{"sub":"embed-worker","aud":"bae6-ai","scope":"ai:invoke","ttlSeconds":900}'); then
+          if idp=$$(curl -sf -X POST http://mock-oidc:8080/token \
+              -d '{"sub":"embed-worker","aud":"bae6-authn-workloads","ttlSeconds":900}') &&
+            body=$$(curl -sf -X POST http://authn:8080/auth/token \
+              --data-urlencode grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+              --data-urlencode subject_token_type=urn:ietf:params:oauth:token-type:access_token \
+              --data-urlencode "subject_token=$$(echo "$$idp" | sed -E 's/.*"access_token":"([^"]+)".*/\1/')" \
+              --data-urlencode audience=bae6-ai); then
             echo "$$body" | sed -E 's/.*"access_token":"([^"]+)".*/\1/' > /tokens/ai.tmp
             mv /tokens/ai.tmp /tokens/ai
-            sleep 300
+            sleep 60
           else
             sleep 1
           fi
@@ -299,7 +325,8 @@ services:
       timeout: 2s
       retries: 60
     depends_on:
-      - mock-oidc
+      mock-oidc: {condition: service_started}
+      authn-seed: {condition: service_completed_successfully}
 
   ai-gateway:
     image: localhost/bae6-ai-gateway:dev
@@ -314,8 +341,9 @@ services:
       AWS_ACCESS_KEY_ID: mock
       AWS_SECRET_ACCESS_KEY: mock
       BAE6_DATABASE_URL: postgres://ai:${AI_DB_PASSWORD:-dev-only-ai}@postgres:5432/ai
-      BAE6_AI_ISSUERS: >-
-        [{"issuer":"http://mock-oidc:8080","audience":"bae6-ai","jwksUri":"http://mock-oidc:8080/.well-known/jwks.json","organization":"example","application":"demo"}]
+      BAE6_AUTHN_URL: http://authn:8080
+      BAE6_AUTHN_CLIENT_SECRET_FILE: /run/secrets/authn/authn-client-secret
+      BAE6_AUTHZ_URL: http://authz-api:8080
       BAE6_AI_CONFIG: >-
         {"priceBook":{"version":"integration","prices":{
         "chat-mock":{"inputPerMTok":"3","outputPerMTok":"15"},
@@ -323,12 +351,15 @@ services:
         "models":[
         {"id":"chat-mock","provider":"bedrock","providerModel":"mock.chat-v1","region":"us-east-1","endpoint":"http://mock-cloud:8080","operations":["chat"],"inputModalities":["text"],"maxInputTokens":8000,"maxOutputTokens":1000},
         {"id":"embed-mock","provider":"bedrock","providerModel":"mock.embed-v1","region":"us-east-1","endpoint":"http://mock-cloud:8080","operations":["embed"],"inputModalities":["text"],"maxInputTokens":8000,"maxOutputTokens":1}],
-        "budgets":{"example":"100"}}
+        "budgets":{"acme":"100"}}
+    volumes:
+      - ai-authn:/run/secrets/authn:ro
     ports:
       - "127.0.0.1:8081:8080"
     depends_on:
       postgres: {condition: service_healthy}
-      mock-oidc: {condition: service_started}
+      authn: {condition: service_healthy}
+      authz-api: {condition: service_healthy}
       mock-cloud: {condition: service_started}
 
   data-api:
@@ -516,5 +547,6 @@ volumes:
   tokens:
   authn-keys:
   authz-authn:
+  ai-authn:
   authn-secrets:
   console-authn:

@@ -594,8 +594,8 @@ export class Ai {
   }
 
   /**
-   * Spend, tokens, latency and active users per group; needs `ai:usage:read`. Grouping by
-   * "organization", or naming another one, needs `ai:usage:platform`. `runIds` (1 to 50) is
+   * Spend, tokens, latency and active users per group; needs `api:ai-usage-read`. Grouping by
+   * "organization", or naming another one, is refused. `runIds` (1 to 50) is
    * required for "run".
    */
   async usageSummary(
@@ -681,7 +681,7 @@ export class Ai {
     return this.#tags("domains", options);
   }
 
-  /** Creates or renames a task type; needs `ai:usage:admin`. At most 50 per organization. */
+  /** Creates or renames a task type; needs `api:ai-usage-admin`. At most 50 per organization. */
   putTaskType(id: string, name: string, options: CallOptions = {}) {
     return this.#putTag("task-types", id, name, options);
   }
@@ -738,21 +738,21 @@ export class Ai {
     return body as unknown as Budget;
   }
 
-  /** Where each configured provider's cloud credentials come from, never the credentials. Needs `ai:usage:read`. */
+  /** Where each configured provider's cloud credentials come from, never the credentials. Needs `api:ai-usage-read`. */
   async credentials(options: CallOptions = {}) {
     const body = await this.#call("GET", "/v1/credentials", options);
     if (!Array.isArray(body.data)) throw invalidResponse();
     return body.data as CredentialStatus[];
   }
 
-  /** Rates one completion of this organization; rating it again replaces the first. Needs `feedback:write`. */
+  /** Rates one completion of this organization; rating it again replaces the first. Needs `api:feedback-write`. */
   async feedback(request: FeedbackRequest, options: CallOptions = {}) {
     const body = await this.#call("POST", "/v1/feedback", options, request);
     if (typeof body.requestId !== "string") throw invalidResponse();
     return body as { requestId: string; verdict: "positive" | "negative" };
   }
 
-  /** One page of the organization's feedback, newest first. Needs `feedback:read`. */
+  /** One page of the organization's feedback, newest first. Needs `api:feedback-read`. */
   async listFeedback(
     page: { limit?: number; cursor?: string } = {},
     options: CallOptions = {},

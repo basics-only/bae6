@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import type { ModelProvider } from "@bae6/ai-core";
 import type { ModelConfig, RouteConfig } from "./config.js";
-import type { Identity } from "./identity.js";
+import { type Fixture, fakeAuthorize } from "./fake-authorize.test.js";
 import type { Claim, Ledger } from "./ledger.js";
 import { pick } from "./routing.js";
 import { createGateway } from "./server.js";
@@ -94,21 +94,21 @@ const provider = {
   }),
 } as unknown as ModelProvider;
 
-const who = (organizationId: string): Identity => ({
+const who = (organizationId: string): Fixture => ({
   subjectId: "svc",
   subjectType: "workload",
   organizationId,
   applicationId: "crm",
   scopes: ["ai:invoke"],
 });
-const identities: Record<string, Identity> = {
+const identities: Record<string, Fixture> = {
   acme: who("acme"),
   globex: who("globex"),
 };
 
 const server = createGateway({
   credentials: () => [],
-  verify: async (t) => (t ? (identities[t] ?? null) : null),
+  authorize: fakeAuthorize(identities),
   ledger,
   feedback: {} as never,
   analytics: {} as never,

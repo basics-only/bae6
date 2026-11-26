@@ -4,7 +4,7 @@ COMPOSE = $(CONTAINER_RUNTIME) compose -f deploy/compose.yaml --profile $(PROFIL
 
 export BAE6_CONTAINER_RUNTIME = $(CONTAINER_RUNTIME)
 
-.PHONY: install format lint typecheck test db-test model-test migrate integration demo up down
+.PHONY: install format lint typecheck test db-test model-test migrate integration demo up down tenant seed
 
 install:
 	pnpm install --frozen-lockfile
@@ -35,7 +35,7 @@ integration:
 	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8180 pnpm --filter @bae6/authz-api test:integration
 	BAE6_API_URL=http://localhost:8080 OPENFGA_API_URL=http://localhost:8180 pnpm --filter @bae6/authz test:integration
 
-demo:
+demo: seed
 	node --test e2e/integration/demo.test.mjs e2e/integration/workers.test.mjs e2e/integration/console.test.mjs e2e/integration/orgs.test.mjs
 
 ORGS_OVERRIDE = e2e/orgs/compose.generated.json
@@ -57,11 +57,26 @@ db-test:
 	    OPENFGA_API_URL=http://127.0.0.1:8180 pnpm -C $$dir run $$script; \
 	done
 
+TENANT_ENV = deploy/.env
+
 up:
 	$(COMPOSE) up -d --wait postgres
 	$(COMPOSE) exec -T postgres sh /docker-entrypoint-initdb.d/init.sh
+	grep -qs '^BAE6_TENANT_STORE_ID=' $(TENANT_ENV) || $(MAKE) tenant
 	$(COMPOSE) config --format json | node e2e/orgs/compose.mjs > $(ORGS_OVERRIDE)
-	$(COMPOSE) -f $(ORGS_OVERRIDE) up --build -d --wait
+	$(COMPOSE) -f deploy/compose/authz-tenant.yaml -f $(ORGS_OVERRIDE) up --build -d --wait
+	if [ "$(PROFILE)" = all ]; then $(MAKE) seed; fi
+
+# Once per stack: the acme tenant's OpenFGA store, whose ids authz and authn read from deploy/.env.
+tenant:
+	$(COMPOSE) up -d openfga
+	for i in $$(seq 30); do curl -sf http://127.0.0.1:8180/healthz >/dev/null && break; sleep 1; done
+	OPENFGA_API_URL=http://127.0.0.1:8180 pnpm --silent --filter @bae6/authz-scripts model bootstrap-tenant --organization acme > $(TENANT_ENV).tenant
+	cat $(TENANT_ENV).tenant >> $(TENANT_ENV)
+	rm $(TENANT_ENV).tenant
+
+seed:
+	node e2e/seed.mjs
 
 down:
 	$(COMPOSE) down

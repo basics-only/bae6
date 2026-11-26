@@ -6,6 +6,8 @@ import {
   type ModelProvider,
   vertexProvider,
 } from "@bae6/ai-core";
+import { Authn } from "@bae6/authn";
+import { tenantGuard } from "@bae6/authz/middleware";
 import pg from "pg";
 import { createAnalytics } from "./analytics.js";
 import {
@@ -21,7 +23,7 @@ import {
   type RefreshState,
 } from "./credentials.js";
 import { createFeedback } from "./feedback.js";
-import { createVerifier, type Issuer } from "./identity.js";
+import { fromGuard } from "./identity.js";
 import { createLedger } from "./ledger.js";
 import { migrate } from "./migrate.js";
 import { createGateway, type GatewayModel } from "./server.js";
@@ -46,13 +48,30 @@ function devOnly(name: string) {
   }
   return on;
 }
-const allowHttpJwks = devOnly("BAE6_ALLOW_HTTP_JWKS");
-const issuers = JSON.parse(env.BAE6_AI_ISSUERS ?? "null") as Issuer[] | null;
-if (!Array.isArray(issuers)) {
-  throw new Error(
-    "BAE6_AI_ISSUERS must be a JSON array of {issuer,audience,jwksUri,organization,application}",
-  );
+function required(name: string) {
+  const value = env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return value;
 }
+const authn = new Authn({
+  baseUrl: required("BAE6_AUTHN_URL"),
+  credentials: readFileSync(
+    required("BAE6_AUTHN_CLIENT_SECRET_FILE"),
+    "utf8",
+  ).trim(),
+});
+const authorize = fromGuard(
+  tenantGuard({
+    authz: { baseUrl: required("BAE6_AUTHZ_URL"), application: "bae6-ai" },
+    includeExecutionContext: true,
+    exchange: (subjectToken) =>
+      authn.exchangeToken({
+        subjectToken,
+        subjectTokenType: "jwt",
+        audience: "bae6-authz",
+      }),
+  }),
+);
 const configFile = env.BAE6_AI_CONFIG_FILE;
 const rawConfig =
   env.BAE6_AI_CONFIG ?? (configFile && readFileSync(configFile, "utf8"));
@@ -204,7 +223,7 @@ const feedbackRetentionDays = int("BAE6_FEEDBACK_RETENTION_DAYS", 90, 1, 3650);
 
 const server = createGateway({
   credentials: credentialStatus,
-  verify: createVerifier(issuers, { allowHttpJwks }),
+  authorize,
   ledger,
   feedback,
   analytics,

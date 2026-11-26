@@ -451,44 +451,25 @@ test(
   },
 );
 
-const who = (scopes: string[]): Identity => ({
+const who: Identity = {
   subjectId: "svc",
   subjectType: "workload",
   organizationId: "acme",
   applicationId: "crm",
-  scopes,
-});
-const parse = (qs: string, scopes: string[], series = false) =>
-  parseUsageQuery(
-    new URL(`http://x/v1/usage/summary?${qs}`),
-    who(scopes),
-    series,
-  );
+};
+const parse = (qs: string, series = false) =>
+  parseUsageQuery(new URL(`http://x/v1/usage/summary?${qs}`), who, series);
 const refused = (status: number) => (e: unknown) =>
   e instanceof HttpError && e.status === status;
 
-test("without the platform scope a caller stays in its own organization", () => {
-  const read = ["ai:usage:read"];
-  assert.throws(() => parse("groupBy=organization", read), refused(403));
-  assert.throws(
-    () => parse("groupBy=model&organization=globex", read),
-    refused(403),
-  );
-  assert.equal(
-    parse("groupBy=model&organization=acme", read).organization,
-    "acme",
-  );
-  assert.equal(parse("groupBy=model", read).organization, "acme");
-  const platform = [...read, "ai:usage:platform"];
-  assert.equal(parse("groupBy=organization", platform).organization, null);
-  assert.equal(
-    parse("groupBy=model&organization=globex", platform).organization,
-    "globex",
-  );
+test("a caller stays in its own organization", () => {
+  assert.throws(() => parse("groupBy=organization"), refused(403));
+  assert.throws(() => parse("groupBy=model&organization=globex"), refused(403));
+  assert.equal(parse("groupBy=model&organization=acme").organization, "acme");
+  assert.equal(parse("groupBy=model").organization, "acme");
 });
 
 test("malformed windows, groups and run lists are refused", () => {
-  const read = ["ai:usage:read"];
   for (const bad of [
     "",
     "groupBy=user",
@@ -502,10 +483,10 @@ test("malformed windows, groups and run lists are refused", () => {
     "groupBy=model&group=x",
     ...[`groupBy=run${"&runId=r".repeat(51)}`],
   ]) {
-    assert.throws(() => parse(bad, read), refused(400), bad);
+    assert.throws(() => parse(bad), refused(400), bad);
   }
   for (const bad of ["groupBy=model", "group=x", "groupBy=run&group=a b"]) {
-    assert.throws(() => parse(bad, read, true), refused(400), bad);
+    assert.throws(() => parse(bad, true), refused(400), bad);
   }
 });
 

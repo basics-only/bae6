@@ -4,7 +4,6 @@ import { ORGS, orgIssuer } from "../orgs/orgs.mjs";
 
 const url = {
   oidc: "http://127.0.0.1:8085",
-  ai: "http://127.0.0.1:8081",
   data: "http://127.0.0.1:8082",
 };
 
@@ -55,35 +54,6 @@ test("each of the 20 organizations reads only its own documents", async () => {
       );
     }),
   );
-});
-
-test("model spend is metered to the calling organization only", async () => {
-  const [spender, bystander] = ORGS;
-  const jwt = {
-    spender: await token(spender, "bae6-ai", "ai:invoke ai:usage:read"),
-    bystander: await token(bystander, "bae6-ai", "ai:usage:read"),
-  };
-  const spent = async (who) =>
-    Number((await call(url.ai, "GET", "/v1/budgets", jwt[who])).body.spent);
-  const before = {
-    spender: await spent("spender"),
-    bystander: await spent("bystander"),
-  };
-
-  const answer = await call(
-    url.ai,
-    "POST",
-    "/v1/chat/completions",
-    jwt.spender,
-    {
-      model: "chat-mock",
-      messages: [{ role: "user", content: "hello" }],
-    },
-  );
-  assert.equal(answer.status, 200);
-
-  assert.ok((await spent("spender")) > before.spender);
-  assert.equal(await spent("bystander"), before.bystander);
 });
 
 test("an issuer no service is configured for is refused", async () => {

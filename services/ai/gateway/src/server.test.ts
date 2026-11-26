@@ -8,8 +8,8 @@ import AjvModule from "ajv/dist/2020.js";
 import { parse } from "yaml";
 import type { Analytics, UsageQuery } from "./analytics.js";
 import type { ModelConfig } from "./config.js";
+import { type Fixture, fakeAuthorize } from "./fake-authorize.test.js";
 import type { Feedback } from "./feedback.js";
-import type { Identity } from "./identity.js";
 import type { Ledger, Outcome, Tags, Timing } from "./ledger.js";
 import { createGateway } from "./server.js";
 
@@ -199,7 +199,8 @@ const provider = {
   },
 } as unknown as ModelProvider;
 
-const identities: Record<string, Identity> = {
+const authorized: string[] = [];
+const identities: Record<string, Fixture> = {
   acme: {
     subjectId: "svc",
     subjectType: "workload",
@@ -270,13 +271,6 @@ const identities: Record<string, Identity> = {
     applicationId: "crm",
     scopes: ["ai:usage:read", "ai:usage:admin"],
   },
-  operator: {
-    subjectId: "svc",
-    subjectType: "workload",
-    organizationId: "acme",
-    applicationId: "crm",
-    scopes: ["ai:usage:read", "ai:usage:platform"],
-  },
   person: {
     subjectId: "ada",
     subjectType: "user",
@@ -291,6 +285,14 @@ const identities: Record<string, Identity> = {
     applicationId: "crm",
     scopes: ["ai:invoke"],
   },
+  openonly: {
+    subjectId: "svc",
+    subjectType: "workload",
+    organizationId: "acme",
+    applicationId: "crm",
+    scopes: ["ai:invoke"],
+    models: ["open"],
+  },
 };
 
 const server = createGateway({
@@ -298,7 +300,15 @@ const server = createGateway({
     { provider: "bedrock", source: "pod-identity", lastRefreshAgeSeconds: 12 },
     { provider: "vertex", source: "metadata", lastRefreshAgeSeconds: null },
   ],
-  verify: async (t) => (t ? (identities[t] ?? null) : null),
+  authorize: async (authorization, resource) =>
+    authorization === "Bearer down"
+      ? {
+          allowed: false,
+          status: 503,
+          code: "unavailable",
+          message: "Authorization is unavailable.",
+        }
+      : fakeAuthorize(identities, authorized)(authorization, resource),
   ledger,
   feedback,
   analytics,
@@ -340,6 +350,43 @@ test("refuses missing credentials, missing scope and another tenant's model", as
   assert.equal((await post("globex", hi)).status, 404);
   const none = await post("nobudget", { ...hi, model: "open" });
   assert.equal(none.status, 403);
+});
+
+test("a chat is authorized for its endpoint and then for the model it names", async () => {
+  authorized.length = 0;
+  assert.equal((await post("acme", hi)).status, 200);
+  assert.deepEqual(authorized, ["api:ai-invoke", "model:m"]);
+  authorized.length = 0;
+  assert.equal((await post("acme", { ...hi, model: "a b" })).status, 404);
+  assert.deepEqual(authorized, ["api:ai-invoke"]);
+});
+
+test("a caller without access to the model it names is refused before the provider", async () => {
+  finalized.length = 0;
+  assert.equal((await post("openonly", hi)).status, 403);
+  assert.equal((await post("openonly", { ...hi, model: "open" })).status, 200);
+  assert.equal(finalized.length, 1);
+});
+
+test("an end-user token header is refused rather than ignored", async () => {
+  authorized.length = 0;
+  const res = await fetch(`${base}/v1/models`, {
+    headers: { authorization: "Bearer acme", "bae6-end-user-token": "u" },
+  });
+  assert.equal(res.status, 400);
+  assert.deepEqual(authorized, []);
+});
+
+test("an unknown path is not found without asking authz", async () => {
+  authorized.length = 0;
+  assert.equal((await call("GET", "/v1/nope", "acme")).status, 404);
+  assert.deepEqual(authorized, []);
+});
+
+test("an authorization outage is a retryable 503", async () => {
+  const res = await post("down", hi);
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get("retry-after"), "5");
 });
 
 test("answers a metered chat and finalizes it as measured", async () => {
@@ -617,7 +664,7 @@ test("a defined tag and run id reach the ledger with the end-user flag and timin
   assert.ok((streamed?.latencyMs ?? 0) >= (streamed?.firstTokenMs ?? 1));
 });
 
-test("usage summary and series are confined to the caller's organization unless it is a platform operator", async () => {
+test("usage summary and series are confined to the caller's organization", async () => {
   asked.length = 0;
   const summary = await call(
     "GET",
@@ -646,14 +693,6 @@ test("usage summary and series are confined to the caller's organization unless 
     403,
   );
   assert.equal((await call("GET", "/v1/usage/summary", "analyst")).status, 400);
-  asked.length = 0;
-  const all = await call(
-    "GET",
-    "/v1/usage/summary?groupBy=organization",
-    "operator",
-  );
-  assert.equal(all.status, 200);
-  assert.equal(asked[0]?.organization, null);
 });
 
 test("usage distribution is confined to the caller's organization and refuses an unknown measure", async () => {

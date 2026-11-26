@@ -35,7 +35,7 @@ import type { ClassifierConfig, ModelConfig, RouteConfig } from "./config.js";
 import type { AwsSource } from "./credentials.js";
 import { type Feedback, parseFeedback } from "./feedback.js";
 import { envelope, HttpError, readBody, send } from "./http.js";
-import { type Identity, identify, type Verifier } from "./identity.js";
+import type { Authorize, Decision, Identity } from "./identity.js";
 import type { Caller, Ledger, Outcome, Tags, Timing } from "./ledger.js";
 import {
   type ChatInput,
@@ -67,7 +67,7 @@ export interface CredentialStatus {
 
 export interface GatewayDeps {
   credentials: () => CredentialStatus[];
-  verify: Verifier;
+  authorize: Authorize;
   ledger: Ledger;
   feedback: Feedback;
   analytics: Analytics;
@@ -95,7 +95,7 @@ const FEEDBACK_WINDOW_MS = 60_000;
 const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._-]{8,128}$/;
 
-type Who = Identity & { workloadId?: string };
+type Who = Identity;
 
 /** What a call was tagged with and when its provider call started, for the usage event. */
 interface Meta {
@@ -109,10 +109,37 @@ const callerOf = (who: Who): Caller => ({
   subjectId: who.subjectId,
 });
 
-function requireScope(who: Who, scope: string) {
-  if (!who.scopes.includes(scope)) {
-    throw new HttpError(403, "forbidden", `Missing scope ${scope}.`);
-  }
+const USAGE_READ =
+  /^\/v1\/(budgets|credentials|usage(\/(concentration|distribution|summary|series))?)$/;
+const TAGS = /^\/v1\/(task-types|domains)(\/[^/]+)?$/;
+const MODEL_ID = /^[A-Za-z0-9_@.+|-]{1,256}$/;
+
+/** The `api:` resource that guards an endpoint, or undefined if there is no such endpoint. */
+function apiFor(method: string | undefined, path: string) {
+  if (
+    (method === "GET" && path === "/v1/models") ||
+    (method === "POST" &&
+      (path === "/v1/chat/completions" || path === "/v1/embeddings"))
+  )
+    return "ai-invoke";
+  if (method === "GET" && USAGE_READ.test(path)) return "ai-usage-read";
+  const tag = TAGS.exec(path);
+  if (tag && tag[2] === undefined && method === "GET") return "ai-usage-read";
+  if (tag && tag[2] !== undefined && (method === "PUT" || method === "DELETE"))
+    return "ai-usage-admin";
+  if (path === "/v1/feedback" && method === "POST") return "feedback-write";
+  if (path === "/v1/feedback" && method === "GET") return "feedback-read";
+  return undefined;
+}
+
+function admitted(decision: Decision): Who {
+  if (decision.allowed) return decision.who;
+  throw new HttpError(
+    decision.status,
+    decision.status === 401 ? "unauthenticated" : decision.code,
+    decision.message,
+    decision.status === 503 ? 5 : undefined,
+  );
 }
 
 const mayUse = (c: { organizations?: string[] }, org: string) =>
@@ -475,6 +502,17 @@ export function createGateway(deps: GatewayDeps) {
     send(res, status, body);
   }
 
+  async function mayInvoke(req: IncomingMessage, model: string) {
+    if (!MODEL_ID.test(model))
+      throw new HttpError(404, "not_found", "Model not found.");
+    admitted(
+      await deps.authorize(req.headers.authorization, {
+        resourceType: "model",
+        resourceId: model,
+      }),
+    );
+  }
+
   async function chat(
     req: IncomingMessage,
     res: ServerResponse,
@@ -485,6 +523,7 @@ export function createGateway(deps: GatewayDeps) {
   ) {
     const { json, sha256 } = await readBody(req, MAX_BODY_BYTES);
     const input = parseChat(json);
+    await mayInvoke(req, input.model);
     const op = input.stream ? "chat_stream" : "chat";
     const route = routes.get(input.model);
     if (route && !mayUse(route, who.organizationId)) {
@@ -717,6 +756,7 @@ export function createGateway(deps: GatewayDeps) {
   ) {
     const { json, sha256 } = await readBody(req, MAX_BODY_BYTES);
     const input = parseEmbeddings(json);
+    await mayInvoke(req, input.model);
     const route = routes.get(input.model);
     if (route && mayUse(route, who.organizationId)) {
       throw new HttpError(
@@ -793,33 +833,23 @@ export function createGateway(deps: GatewayDeps) {
     if (!path.startsWith("/v1/"))
       throw new HttpError(404, "not_found", "Not found.");
 
-    let who: Who | null;
-    try {
-      const endUser = req.headers["bae6-end-user-token"];
-      who = await identify(
-        deps.verify,
-        req.headers.authorization,
-        typeof endUser === "string" ? endUser : undefined,
-      );
-    } catch (err) {
-      log({ msg: "identity_unavailable", error: (err as Error).name });
+    const api = apiFor(req.method, path);
+    if (!api) throw new HttpError(404, "not_found", "Not found.");
+    if (req.headers["bae6-end-user-token"] !== undefined)
       throw new HttpError(
-        503,
-        "unavailable",
-        "Identity provider unavailable.",
-        5,
+        400,
+        "invalid_request",
+        "Bae6-End-User-Token is not accepted; call with the user's own bae6 token.",
       );
-    }
-    if (!who)
-      throw new HttpError(
-        401,
-        "unauthenticated",
-        "Missing or invalid credentials.",
-      );
+    const who = admitted(
+      await deps.authorize(req.headers.authorization, {
+        resourceType: "api",
+        resourceId: api,
+      }),
+    );
 
     const endpoint = `${req.method} ${path}`;
     if (endpoint === "GET /v1/models") {
-      requireScope(who, "ai:invoke");
       const org = who.organizationId;
       const visible = [...models.values()].filter((m) => mayUse(m.config, org));
       const listed = [...routes.values()]
@@ -867,7 +897,6 @@ export function createGateway(deps: GatewayDeps) {
       });
     }
     if (endpoint === "GET /v1/budgets") {
-      requireScope(who, "ai:usage:read");
       const b = await metering(ledger.budget(who.organizationId));
       return send(res, 200, {
         period: b.period,
@@ -877,7 +906,6 @@ export function createGateway(deps: GatewayDeps) {
       });
     }
     if (endpoint === "GET /v1/credentials") {
-      requireScope(who, "ai:usage:read");
       const providers = new Set(
         [...models.values()]
           .filter(
@@ -892,7 +920,6 @@ export function createGateway(deps: GatewayDeps) {
       });
     }
     if (endpoint === "GET /v1/usage") {
-      requireScope(who, "ai:usage:read");
       const now = new Date();
       const from = new Date(
         url.searchParams.get("from") ??
@@ -915,7 +942,6 @@ export function createGateway(deps: GatewayDeps) {
     }
 
     if (endpoint === "GET /v1/usage/concentration") {
-      requireScope(who, "ai:usage:read");
       const q = parseUsageQuery(url, who, true);
       const measure = parseMeasure(url);
       return send(res, 200, {
@@ -928,7 +954,6 @@ export function createGateway(deps: GatewayDeps) {
       });
     }
     if (endpoint === "GET /v1/usage/distribution") {
-      requireScope(who, "ai:usage:read");
       const q = parseUsageQuery(url, who, true);
       const measure = parseMeasure(url);
       return send(res, 200, {
@@ -944,7 +969,6 @@ export function createGateway(deps: GatewayDeps) {
       endpoint === "GET /v1/usage/summary" ||
       endpoint === "GET /v1/usage/series"
     ) {
-      requireScope(who, "ai:usage:read");
       const series = path.endsWith("/series");
       const q = parseUsageQuery(url, who, series);
       const head = {
@@ -969,13 +993,11 @@ export function createGateway(deps: GatewayDeps) {
       const kind = KIND_OF_PATH[tagRoute[1] as string] as Kind;
       const id = tagRoute[2];
       if (id === undefined && req.method === "GET") {
-        requireScope(who, "ai:usage:read");
         return send(res, 200, {
           data: await analyticsStore(analytics.tags(who.organizationId, kind)),
         });
       }
       if (id !== undefined && req.method === "PUT") {
-        requireScope(who, "ai:usage:admin");
         if (!TAG_ID.test(id) || id === "untagged") {
           throw new HttpError(
             400,
@@ -1009,7 +1031,6 @@ export function createGateway(deps: GatewayDeps) {
         );
       }
       if (id !== undefined && req.method === "DELETE") {
-        requireScope(who, "ai:usage:admin");
         const removed =
           TAG_ID.test(id) &&
           (await analyticsStore(
@@ -1022,7 +1043,6 @@ export function createGateway(deps: GatewayDeps) {
     }
 
     if (endpoint === "POST /v1/feedback") {
-      requireScope(who, "feedback:write");
       const now = Date.now();
       const w = feedbackWindows.get(who.organizationId);
       if (!w || now - w.start >= FEEDBACK_WINDOW_MS) {
@@ -1055,7 +1075,6 @@ export function createGateway(deps: GatewayDeps) {
       });
     }
     if (endpoint === "GET /v1/feedback") {
-      requireScope(who, "feedback:read");
       const limit = Number(url.searchParams.get("limit") ?? 50);
       const cursor = url.searchParams.get("cursor");
       if (
@@ -1090,7 +1109,6 @@ export function createGateway(deps: GatewayDeps) {
           ? embeddings
           : undefined;
     if (!invoke) throw new HttpError(404, "not_found", "Not found.");
-    requireScope(who, "ai:invoke");
     const keyHeader = req.headers["idempotency-key"];
     if (
       keyHeader !== undefined &&

@@ -32,7 +32,9 @@ function start(env: Record<string, string>) {
       env: {
         PATH: process.env.PATH ?? "",
         BAE6_DATABASE_URL: "postgres://x:x@127.0.0.1:1/x",
-        BAE6_AI_ISSUERS: "[]",
+        BAE6_AUTHN_URL: "http://127.0.0.1:1",
+        BAE6_AUTHN_CLIENT_SECRET_FILE: "package.json",
+        BAE6_AUTHZ_URL: "http://127.0.0.1:1",
         ...env,
       },
       cwd: new URL("..", import.meta.url),
@@ -108,10 +110,7 @@ test("accepts web identity outside development", () => {
   assert.match(run.stderr, /ECONNREFUSED/);
 });
 
-for (const flag of [
-  "BAE6_ALLOW_HTTP_JWKS",
-  "BAE6_ALLOW_CUSTOM_PROVIDER_ENDPOINTS",
-]) {
+for (const flag of ["BAE6_ALLOW_CUSTOM_PROVIDER_ENDPOINTS"]) {
   test(`refuses ${flag} unless NODE_ENV is development`, () => {
     for (const nodeEnv of [undefined, "", "production", "prod", "staging"]) {
       const run = boot(flag, nodeEnv);

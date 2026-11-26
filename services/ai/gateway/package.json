@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@bae6/ai-core": "workspace:*",
-    "jose": "catalog:",
+    "@bae6/authn": "workspace:*",
+    "@bae6/authz": "workspace:*",
     "pg": "catalog:"
   },
   "devDependencies": {
