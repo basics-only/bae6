@@ -21,7 +21,6 @@ export interface Principal {
   delegation?: Delegation;
 }
 
-/** A verified delegated token: `subject` is the initiator and `actor` must be allowed too. */
 export interface Delegation {
   actor: string;
   resources: readonly string[];

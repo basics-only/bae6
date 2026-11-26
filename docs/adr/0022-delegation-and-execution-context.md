@@ -27,7 +27,8 @@ Agents and services act for users on specific tasks. Each downstream call must n
 - **Quota** is a separate decision (`QuotaDecision`). In v1 only the contract and hooks exist, and budgets stay in the ai gateway.
 
 ## Consequences
-- Revocation and the initiator losing access both take effect on the next check: at once with `higher_consistency`, within the cache window otherwise.
+- The initiator or actor losing access takes effect on the next check: at once with `higher_consistency`, within the cache window otherwise.
+- Revoking a delegation refuses its re-exchange and nesting at once. Tokens already issued carry their scope and stay valid until they expire, at most 300 seconds, so verifiers need no runtime call to authn.
 - Three checks per delegated action cost latency. They are batched into one OpenFGA call where possible.
 - Required tests:
   - cross-task token reuse
