@@ -17,18 +17,6 @@ const issuers = (service, key, audience) => [
 ];
 
 const services = {};
-if (base["ai-gateway"]) {
-  const config = env("ai-gateway", "BAE6_AI_CONFIG");
-  for (const org of ORGS) config.budgets[org] = "100";
-  services["ai-gateway"] = {
-    environment: {
-      BAE6_AI_ISSUERS: JSON.stringify(
-        issuers("ai-gateway", "BAE6_AI_ISSUERS", "bae6-ai"),
-      ),
-      BAE6_AI_CONFIG: JSON.stringify(config),
-    },
-  };
-}
 if (base["data-api"]) {
   const config = env("data-api", "BAE6_DATA_CONFIG");
   const [example] = config.sources;

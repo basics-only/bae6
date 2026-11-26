@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { workloadToken } from "../acme.mjs";
 
 const url = {
   oidc: "http://127.0.0.1:8085",
@@ -90,7 +91,7 @@ test("research agent finds approved content through embed, reads the source, ask
   assert.equal(object.status, 200);
   assert.match(String(object.body), /ten business days/);
 
-  const ai = await app("bae6-ai", "ai:invoke ai:usage:read");
+  const ai = await workloadToken("research-agent");
   const spentBefore = Number(
     (await call(url.ai, "GET", "/v1/budgets", { jwt: ai })).body.spent,
   );
@@ -209,10 +210,18 @@ test("calls without a valid token, scope or audience are refused", async () => {
   assert.equal(
     (
       await call(url.ai, "GET", "/v1/usage", {
-        jwt: await app("bae6-ai", "ai:invoke"),
+        jwt: await workloadToken("embed-worker"),
       })
     ).status,
     403,
+  );
+  assert.equal(
+    (
+      await call(url.ai, "GET", "/v1/usage", {
+        jwt: await app("bae6-ai", "ai:invoke ai:usage:read"),
+      })
+    ).status,
+    401,
   );
 });
 

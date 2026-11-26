@@ -7,10 +7,12 @@ info:
     The chat and embeddings endpoints accept a strict subset of the OpenAI wire format.
     An unknown field is `400 unsupported_parameter`, never silently ignored.
 
-    **Identity.** The workload is identified by its bearer token. The organization and
-    application come from the token's issuer configuration, never from claims or bodies.
-    With `Bae6-End-User-Token` the user becomes the subject; both tokens must map to the
-    same organization and application, else `401`. Scopes always come from the workload token.
+    **Identity.** The bearer is a bae6-authn token for audience `bae6-ai`. Its tenant is
+    the organization and its `application_id` the application; a token without one is
+    `403`. Each endpoint is the bae6-authz resource `api:<id>` named in its summary,
+    checked with `can_call`; chat and embeddings also need `can_invoke` on
+    `model:<model>`. If authorization is unavailable the call is `503`. A token for another
+    audience is `401`; the retired `Bae6-End-User-Token` header is `400`, never ignored.
 
     **Tenancy.** A model limited to other organizations is `404 not_found`, the same as one
     that does not exist.
@@ -41,9 +43,8 @@ paths:
   /v1/models:
     get:
       operationId: listModels
-      summary: Models the caller's organization may use. Needs `ai:invoke`.
+      summary: Models the caller's organization may use. Needs `api:ai-invoke`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
@@ -61,7 +62,7 @@ paths:
   /v1/chat/completions:
     post:
       operationId: createChatCompletion
-      summary: One chat completion, or a server-sent event stream with `stream`. Needs `ai:invoke`.
+      summary: One chat completion, or a server-sent event stream with `stream`. Needs `api:ai-invoke`.
       description: |
         `Idempotency-Key` is not supported with `stream`. A replayed response, success or a
         possibly billed `502`/`504`, carries `Idempotent-Replayed: true`. At most 20 images
@@ -70,7 +71,6 @@ paths:
         part of the request: a key reused with different tags is `409 idempotency_key_reused`,
         and a key already used replays even if its tag has since been deleted.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "#/components/parameters/TaskType"
         - $ref: "#/components/parameters/Domain"
         - $ref: "#/components/parameters/RunIdHeader"
@@ -120,9 +120,8 @@ paths:
   /v1/embeddings:
     post:
       operationId: createEmbeddings
-      summary: Embeds 1 to 16 strings. Needs `ai:invoke`.
+      summary: Embeds 1 to 16 strings. Needs `api:ai-invoke`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "#/components/parameters/TaskType"
         - $ref: "#/components/parameters/Domain"
         - $ref: "#/components/parameters/RunIdHeader"
@@ -169,9 +168,8 @@ paths:
   /v1/budgets:
     get:
       operationId: getBudget
-      summary: The organization's budget for the current UTC month. Needs `ai:usage:read`.
+      summary: The organization's budget for the current UTC month. Needs `api:ai-usage-read`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
@@ -189,9 +187,8 @@ paths:
   /v1/credentials:
     get:
       operationId: getCredentialStatus
-      summary: Where each configured provider's cloud credentials come from, and when they last refreshed. Needs `ai:usage:read`.
+      summary: Where each configured provider's cloud credentials come from, and when they last refreshed. Needs `api:ai-usage-read`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
@@ -207,9 +204,8 @@ paths:
   /v1/usage:
     get:
       operationId: getUsage
-      summary: The caller's application's usage, grouped by model and outcome. Needs `ai:usage:read`.
+      summary: The caller's application's usage, grouped by model and outcome. Needs `api:ai-usage-read`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - name: from
           in: query
@@ -241,11 +237,10 @@ paths:
   /v1/usage/summary:
     get:
       operationId: getUsageSummary
-      summary: Usage per group over a window, with latency and active users. Needs `ai:usage:read`.
+      summary: Usage per group over a window, with latency and active users. Needs `api:ai-usage-read`.
       description: |
-        Confined to the caller's organization unless the caller has `ai:usage:platform`, which
-        allows other organizations (`organization`) and all of them at once. `groupBy=organization`
-        needs `ai:usage:platform`, else `403`. Groups are ordered by cost, highest first, and at
+        Confined to the caller's organization: naming another one, or `groupBy=organization`,
+        is `403`. Groups are ordered by cost, highest first, and at
         most 100 are returned; `truncated` says more existed. `groupBy=run` needs 1 to 50 `runId`
         values and omits runs with no recorded calls.
 
@@ -253,7 +248,6 @@ paths:
         end users over the trailing 1, 7 and 30 days ending at `to`; calls made with only a service
         token have no end user and are not counted. Calls without a tag are the group `untagged`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
@@ -292,7 +286,7 @@ paths:
   /v1/usage/series:
     get:
       operationId: getUsageSeries
-      summary: Usage per UTC day, for everything or for one group. Needs `ai:usage:read`.
+      summary: Usage per UTC day, for everything or for one group. Needs `api:ai-usage-read`.
       description: |
         The same measures and scope rules as `/v1/usage/summary`, one point per UTC day in
         the window, oldest first, at most 94; a day without calls reports zeros. A partial first or last day covers only the part
@@ -300,7 +294,6 @@ paths:
         at the end of that day (or at `to`, if sooner). With neither `groupBy` nor `group` the
         series covers everything in scope; giving one without the other is `400`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
@@ -331,7 +324,7 @@ paths:
   /v1/usage/distribution:
     get:
       operationId: getUsageDistribution
-      summary: How concentrated usage is across end users. Needs `ai:usage:read`.
+      summary: How concentrated usage is across end users. Needs `api:ai-usage-read`.
       description: |
         For each whole percent from 1 to 100, the share of `measure` used by that top
         percent of end users, so `{ topUsersPercent: 10, share: 0.85 }` means the top 10% of
@@ -340,7 +333,6 @@ paths:
         `/v1/usage/summary`. With no end users `users` is 0 and `data` is empty; when the end users used none of
         the measure, `users` is their count, `total` is `"0"` and `data` is empty.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
@@ -375,14 +367,13 @@ paths:
   /v1/usage/concentration:
     get:
       operationId: getUsageConcentration
-      summary: How concentrated usage is across end users, month by month. Needs `ai:usage:read`.
+      summary: How concentrated usage is across end users, month by month. Needs `api:ai-usage-read`.
       description: |
         For each UTC calendar month with end-user calls, the share of `measure` used by that
         month's top 5%, 10% and 20% of end users. The first and last month cover only the part
         inside the window. Parameters, scope rules and privacy are those of
         `/v1/usage/distribution`. Months where end users used none of the measure are left out.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - $ref: "#/components/parameters/UsageFrom"
         - $ref: "#/components/parameters/UsageTo"
@@ -417,10 +408,9 @@ paths:
   /v1/task-types:
     get:
       operationId: listTaskTypes
-      summary: The organization's task types. Needs `ai:usage:read`.
+      summary: The organization's task types. Needs `api:ai-usage-read`.
       description: At most 50. Calls name one in `Bae6-Task-Type`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
@@ -440,12 +430,11 @@ paths:
       - $ref: "#/components/parameters/TagId"
     put:
       operationId: putTaskType
-      summary: Create a task type, or rename one. Needs `ai:usage:admin`.
+      summary: Create a task type, or rename one. Needs `api:ai-usage-admin`.
       description: |
         `untagged` is reserved. An organization has at most 50 task types; a new one past that
         is `409 tag_limit`. Past calls keep the id they were made with.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
@@ -472,10 +461,9 @@ paths:
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     delete:
       operationId: deleteTaskType
-      summary: Remove a task type. Needs `ai:usage:admin`.
+      summary: Remove a task type. Needs `api:ai-usage-admin`.
       description: New calls naming it are `400 unknown_tag`; past calls keep it.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "204":
@@ -491,10 +479,9 @@ paths:
   /v1/domains:
     get:
       operationId: listDomains
-      summary: The organization's domains of use. Needs `ai:usage:read`.
+      summary: The organization's domains of use. Needs `api:ai-usage-read`.
       description: At most 50. Calls name one in `Bae6-Domain`.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "200":
@@ -514,12 +501,11 @@ paths:
       - $ref: "#/components/parameters/TagId"
     put:
       operationId: putDomain
-      summary: Create a domain, or rename one. Needs `ai:usage:admin`.
+      summary: Create a domain, or rename one. Needs `api:ai-usage-admin`.
       description: |
         `untagged` is reserved. An organization has at most 50 domains; a new one past that
         is `409 tag_limit`. Past calls keep the id they were made with.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
@@ -546,10 +532,9 @@ paths:
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     delete:
       operationId: deleteDomain
-      summary: Remove a domain. Needs `ai:usage:admin`.
+      summary: Remove a domain. Needs `api:ai-usage-admin`.
       description: New calls naming it are `400 unknown_tag`; past calls keep it.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       responses:
         "204":
@@ -565,7 +550,7 @@ paths:
   /v1/feedback:
     post:
       operationId: submitFeedback
-      summary: A verdict on one chat completion of the caller's organization. Needs `feedback:write`.
+      summary: A verdict on one chat completion of the caller's organization. Needs `api:feedback-write`.
       description: |
         `requestId` is the `id` of a finished chat completion or stream (a call still in
         flight is `404`). One entry exists per
@@ -575,7 +560,6 @@ paths:
         Writes are limited per organization (120 a minute per replica, else `429`), and
         entries are kept 90 days by default.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
       requestBody:
         required: true
@@ -606,10 +590,9 @@ paths:
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
     get:
       operationId: listFeedback
-      summary: The organization's feedback, newest first. Needs `feedback:read`.
+      summary: The organization's feedback, newest first. Needs `api:feedback-read`.
       description: Comments are untrusted text written by callers; never put one in a prompt.
       parameters:
-        - $ref: "#/components/parameters/EndUserToken"
         - $ref: "../../../contracts/openapi/common.yaml#/components/parameters/RequestId"
         - name: limit
           in: query
@@ -638,13 +621,6 @@ components:
     bearer:
       $ref: "../../../contracts/openapi/common.yaml#/components/securitySchemes/bearer"
   parameters:
-    EndUserToken:
-      name: Bae6-End-User-Token
-      in: header
-      description: Optional verified user token; the user becomes the subject.
-      schema:
-        type: string
-        maxLength: 8192
     TaskType:
       name: Bae6-Task-Type
       in: header
@@ -694,8 +670,7 @@ components:
       name: organization
       in: query
       description: |
-        Limits the query to one organization. Other than the caller's own, needs
-        `ai:usage:platform`, else `403`.
+        The caller's own organization; any other is `403`.
       schema: { type: string, minLength: 1, maxLength: 128 }
   headers:
     IdempotentReplayed:

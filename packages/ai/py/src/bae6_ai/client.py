@@ -288,7 +288,7 @@ class Ai:
     ) -> dict[str, Any]:
         """Rates one chat completion (its `id`) of this organization; a second rating replaces it.
 
-        Needs `feedback:write`. `comment` is at most 1000 UTF-8 bytes.
+        Needs `api:feedback-write`. `comment` is at most 1000 UTF-8 bytes.
         """
         payload = {"requestId": request_id, "verdict": verdict}
         if label is not None:
@@ -307,7 +307,7 @@ class Ai:
         cursor: str | None = None,
         end_user_token: str | None = None,
     ) -> dict[str, Any]:
-        """One page of the organization's feedback, newest first; needs `feedback:read`.
+        """One page of the organization's feedback, newest first; needs `api:feedback-read`.
 
         Comments are untrusted caller text: never put one in a prompt.
         """
@@ -402,10 +402,10 @@ class Ai:
         run_ids: list[str] | None = None,
         end_user_token: str | None = None,
     ) -> dict[str, Any]:
-        """Spend, tokens, latency and active users per group; needs `ai:usage:read`.
+        """Spend, tokens, latency and active users per group; needs `api:ai-usage-read`.
 
         `group_by` is organization, taskType, domain, model or run (`run_ids` then names 1 to 50
-        runs). Grouping by organization, or naming another one, needs `ai:usage:platform`.
+        runs). Grouping by organization, or naming another one, is refused.
         """
         params = _range(start, end)
         params["groupBy"] = group_by
@@ -624,7 +624,7 @@ class Ai:
     async def put_task_type(
         self, id: str, name: str, *, end_user_token: str | None = None
     ) -> dict[str, Any]:
-        """Creates or renames a task type; needs `ai:usage:admin`. At most 50 per organization."""
+        """Creates or renames a task type; needs `api:ai-usage-admin`. At most 50 per organization."""
         return await self._put_tag("task-types", id, name, end_user_token)
 
     async def put_domain(

@@ -442,9 +442,12 @@ importers:
       '@bae6/ai-core':
         specifier: workspace:*
         version: link:../../../packages/ai/core
-      jose:
-        specifier: 'catalog:'
-        version: 6.2.14
+      '@bae6/authn':
+        specifier: workspace:*
+        version: link:../../../packages/authn/ts
+      '@bae6/authz':
+        specifier: workspace:*
+        version: link:../../../packages/authz/ts
       pg:
         specifier: 'catalog:'
         version: 8.23.1
