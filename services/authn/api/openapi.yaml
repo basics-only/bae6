@@ -278,8 +278,15 @@ paths:
         and can only narrow it; a subject token carrying `delegation_id` is refused with `invalid_request`
         unless that delegation is live and matches the token, and the new token expires no later
         than the delegation. Actor tokens are not accepted.
+
+        A workload presents its provider access token (`urn:ietf:params:oauth:token-type:access_token`)
+        with no bearer. It must be signed by an active provider connection's issuer, have that
+        connection's `client_id` as its audience, and map to an active service principal; the new
+        token carries the principal's owner application as `application_id` and expires no later
+        than the provider token.
       security:
         - bearer: []
+        - {}
       requestBody:
         required: true
         content:
@@ -298,6 +305,7 @@ paths:
                   enum:
                     - urn:ietf:params:oauth:token-type:jwt
                     - urn:bae6:params:oauth:token-type:session
+                    - urn:ietf:params:oauth:token-type:access_token
                 audience:
                   type: string
                   minLength: 1

@@ -136,7 +136,7 @@ def test_exchange_refuses_an_unknown_subject_token_type_before_sending() -> None
             handler,
             lambda authn: authn.exchange_token(
                 subject_token=SESSION,
-                subject_token_type="access_token",  # type: ignore[arg-type]
+                subject_token_type="saml2",  # type: ignore[arg-type]
                 audience="bae6-ai",
             ),
         )

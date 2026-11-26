@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import pg from "pg";
 import { AUTHN_AUDIENCE, createBffRoutes } from "./bff.js";
 import { migrate } from "./db/migrate.js";
@@ -188,7 +189,7 @@ const MAX_CACHED_PROVIDERS = 256;
 const providers = new Map<string, OidcProvider>();
 
 async function provider(
-  connection: ConnectionPolicy,
+  connection: Pick<ConnectionPolicy, "tenantId" | "id" | "issuer">,
   redirectUri: string,
 ): Promise<OidcProvider> {
   const { rows } = await pool.query<{ clientId: string; secretRef: string }>(
@@ -224,6 +225,28 @@ async function provider(
     providers.delete(providers.keys().next().value as string);
   providers.set(key, discovered);
   return discovered;
+}
+
+const workloadKeySets = new Map<string, JWTVerifyGetKey>();
+
+async function workloadKeys(
+  connection: Pick<ConnectionPolicy, "tenantId" | "id" | "issuer">,
+): Promise<JWTVerifyGetKey> {
+  const uri = (await provider(connection, "")).jwksUri;
+  if (!uri || !(new URL(uri).protocol === "https:" || allowHttp))
+    throw new OidcError("provider_misconfigured");
+  let keys = workloadKeySets.get(uri);
+  if (!keys) {
+    keys = createRemoteJWKSet(new URL(uri), {
+      timeoutDuration: 5_000,
+      cooldownDuration: 30_000,
+      cacheMaxAge: 600_000,
+    });
+    if (workloadKeySets.size >= MAX_CACHED_PROVIDERS)
+      workloadKeySets.delete(workloadKeySets.keys().next().value as string);
+    workloadKeySets.set(uri, keys);
+  }
+  return keys;
 }
 
 let keyState = "";
@@ -293,6 +316,7 @@ const tokens = createTokenRoutes({
   reexchangeTargets,
   sessionClients,
   clientSecret,
+  workloadKeys,
 });
 const placement = createPlacementRoutes({ db: pool, clientSecret });
 const server = createAuthnApi({

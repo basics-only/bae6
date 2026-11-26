@@ -449,12 +449,15 @@ test(
       ),
       "invalid_target",
     );
-    oauthError(
-      () =>
+    await oauthError(
+      exchangeToken(
+        deps(),
+        { audience: "gateway" },
         form({
           subject_token: token,
           subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
         }),
+      ),
       "invalid_request",
     );
   },

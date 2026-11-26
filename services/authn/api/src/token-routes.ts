@@ -5,12 +5,16 @@ import {
   type ExchangeDeps,
   exchangeSession,
   exchangeToken,
+  exchangeWorkload,
   OAuthError,
   parseExchangeRequest,
   SESSION_TOKEN_TYPE,
+  WORKLOAD_TOKEN_TYPE,
+  type WorkloadKeys,
 } from "./exchange.js";
 import { HttpError, send } from "./http.js";
 import { JWKS_MAX_AGE_SECONDS, KeyError, publishedKeys } from "./keys.js";
+import { OidcError } from "./oidc.js";
 
 const MAX_FORM_BYTES = 20_480;
 const BEARER = /^Bearer ([\x21-\x7e]{1,512})$/;
@@ -18,6 +22,7 @@ const BEARER = /^Bearer ([\x21-\x7e]{1,512})$/;
 export interface TokenRouteDeps extends ExchangeDeps {
   sessionClients: readonly string[];
   clientSecret(client: string): Promise<string | undefined>;
+  workloadKeys: WorkloadKeys;
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest();
@@ -74,18 +79,17 @@ export function createTokenRoutes(deps: TokenRouteDeps) {
     const request = parseExchangeRequest(await readForm(req));
     if (request.subjectTokenType === SESSION_TOKEN_TYPE)
       await authenticate(req, [...deps.sessionClients]);
+    const txn = String(res.getHeader("x-request-id"));
     const out =
       request.subjectTokenType === SESSION_TOKEN_TYPE
-        ? await exchangeSession(
-            deps,
-            request,
-            String(res.getHeader("x-request-id")),
-          )
-        : await exchangeToken(
-            deps,
-            { audience: await callerAudience(req, request.subjectToken) },
-            request,
-          );
+        ? await exchangeSession(deps, request, txn)
+        : request.subjectTokenType === WORKLOAD_TOKEN_TYPE
+          ? await exchangeWorkload(deps, request, txn)
+          : await exchangeToken(
+              deps,
+              { audience: await callerAudience(req, request.subjectToken) },
+              request,
+            );
     send(res, 200, out);
   }
 
@@ -113,6 +117,8 @@ export function createTokenRoutes(deps: TokenRouteDeps) {
     } catch (err) {
       if (err instanceof KeyError)
         throw new HttpError(503, "unavailable", "Token signing unavailable.");
+      if (err instanceof OidcError)
+        throw new HttpError(503, "unavailable", "The provider is unavailable.");
       if (!(err instanceof OAuthError)) throw err;
       if (err.status === 401) res.setHeader("www-authenticate", "Bearer");
       send(res, err.status, { error: err.error });

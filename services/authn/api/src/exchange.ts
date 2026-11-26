@@ -1,6 +1,8 @@
+import { decodeJwt, type JWTVerifyGetKey, jwtVerify } from "jose";
 import type { Pool } from "pg";
 import { liveDelegationExpiry } from "./delegations.js";
 import type { Signer } from "./keys.js";
+import { OidcError } from "./oidc.js";
 import { readSession } from "./sessions.js";
 import {
   type Bae6Claims,
@@ -30,7 +32,25 @@ const CARRIED = [
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 const JWT_TYPE = "urn:ietf:params:oauth:token-type:jwt";
 export const SESSION_TOKEN_TYPE = "urn:bae6:params:oauth:token-type:session";
-const SUBJECT_TYPES = new Set([JWT_TYPE, SESSION_TOKEN_TYPE]);
+export const WORKLOAD_TOKEN_TYPE =
+  "urn:ietf:params:oauth:token-type:access_token";
+const SUBJECT_TYPES = new Set([
+  JWT_TYPE,
+  SESSION_TOKEN_TYPE,
+  WORKLOAD_TOKEN_TYPE,
+]);
+const PROVIDER_ALGORITHMS = ["RS256", "PS256", "ES256", "EdDSA"];
+const INVALID_PROVIDER_TOKEN = new Set([
+  "ERR_JWT_EXPIRED",
+  "ERR_JWT_CLAIM_VALIDATION_FAILED",
+  "ERR_JWT_INVALID",
+  "ERR_JWS_INVALID",
+  "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
+  "ERR_JOSE_ALG_NOT_ALLOWED",
+  "ERR_JOSE_NOT_SUPPORTED",
+  "ERR_JWKS_NO_MATCHING_KEY",
+  "ERR_JWKS_MULTIPLE_MATCHING_KEYS",
+]);
 const MAX_TOKEN_LENGTH = 8192;
 const PARAMS = new Set([
   "grant_type",
@@ -257,6 +277,98 @@ export async function exchangeSession(
     principal_type: "user",
     session_id: session.id,
     notAfter: Math.floor(session.expiresAt.getTime() / 1000),
+  });
+}
+
+export type WorkloadKeys = (connection: {
+  tenantId: string;
+  id: string;
+  issuer: string;
+}) => Promise<JWTVerifyGetKey>;
+
+export async function exchangeWorkload(
+  deps: ExchangeDeps & { workloadKeys: WorkloadKeys },
+  request: ExchangeRequest,
+  txn: string,
+): Promise<TokenResponse> {
+  if (request.subjectTokenType !== WORKLOAD_TOKEN_TYPE)
+    throw new OAuthError("invalid_request");
+  if (!deps.audiences.has(request.audience))
+    throw new OAuthError("invalid_target");
+  let claimed: ReturnType<typeof decodeJwt>;
+  try {
+    claimed = decodeJwt(request.subjectToken);
+  } catch (err) {
+    throw new OAuthError("invalid_request", { cause: err });
+  }
+  const audiences =
+    typeof claimed.aud === "string" ? [claimed.aud] : (claimed.aud ?? []);
+  if (
+    typeof claimed.iss !== "string" ||
+    typeof claimed.sub !== "string" ||
+    audiences.length === 0 ||
+    audiences.length > 8
+  )
+    throw new OAuthError("invalid_request");
+  const { rows } = await deps.db.query<{
+    id: string;
+    tenantId: string;
+    orgPath: string[];
+    applicationId: string | null;
+    connectionId: string;
+    issuer: string;
+    clientId: string;
+  }>(
+    `SELECT p.id, p.tenant_id AS "tenantId", p.org_path AS "orgPath",
+            p.owner_application_id AS "applicationId",
+            c.id AS "connectionId", c.issuer, c.client_id AS "clientId"
+       FROM external_identities x
+       JOIN principals p ON p.tenant_id = x.tenant_id AND p.id = x.principal_id
+       JOIN provider_connections c
+         ON c.tenant_id = x.tenant_id AND c.id = x.provider_connection_id
+      WHERE x.issuer = $1 AND x.subject = $2 AND c.issuer = $1
+        AND c.client_id = ANY($3::text[])
+        AND p.type = 'service' AND p.status = 'active' AND c.status = 'active'
+      LIMIT 2`,
+    [claimed.iss, claimed.sub, audiences],
+  );
+  const workload = rows.length === 1 ? rows[0] : undefined;
+  if (!workload) throw new OAuthError("invalid_request");
+  let exp: number;
+  try {
+    const keys = await deps.workloadKeys({
+      tenantId: workload.tenantId,
+      id: workload.connectionId,
+      issuer: workload.issuer,
+    });
+    ({
+      payload: { exp = 0 },
+    } = await jwtVerify(request.subjectToken, keys, {
+      issuer: workload.issuer,
+      subject: claimed.sub,
+      audience: workload.clientId,
+      algorithms: PROVIDER_ALGORITHMS,
+      clockTolerance: 60,
+      requiredClaims: ["exp"],
+    }));
+  } catch (err) {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string" && INVALID_PROVIDER_TOKEN.has(code))
+      throw new OAuthError("invalid_request", { cause: err });
+    if (err instanceof OidcError) throw err;
+    throw new OidcError("provider_unavailable", { cause: err });
+  }
+  return issue(deps, {
+    aud: request.audience,
+    sub: workload.id,
+    txn,
+    tenant_id: workload.tenantId,
+    org_path: workload.orgPath,
+    principal_type: "service",
+    ...(workload.applicationId !== null && {
+      application_id: workload.applicationId,
+    }),
+    notAfter: exp,
   });
 }
 
