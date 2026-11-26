@@ -163,6 +163,58 @@ export class Authn {
     };
   }
 
+  async revokeDelegation(delegationId: string, token: string): Promise<void> {
+    if (!/^dlg_[0-9a-f]{32}$/.test(delegationId) || token === "")
+      throw new TypeError("A delegation ID and bearer token are required.");
+    const { status } = await this.#http.raw(
+      "POST",
+      `/v1/delegations/${delegationId}/revoke`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (status !== 204) throw invalidResponse();
+  }
+
+  async createDelegation(
+    token: string,
+    input: {
+      actorPrincipalId: string;
+      applicationId: string;
+      taskId: string;
+      parentDelegationId?: string;
+      allowedResources: string[];
+      allowedActions: string[];
+      approvedActions?: string[];
+      expiresInSeconds: number;
+      audience: string;
+    },
+  ): Promise<{ delegationId: string; expiresAt: string; token: Token }> {
+    if (token === "") throw new TypeError("token must not be empty");
+    const body = await this.#http.json("POST", "/v1/delegations", {
+      headers: { authorization: `Bearer ${token}` },
+      body: input,
+    });
+    if (
+      !isObject(body) ||
+      typeof body.delegationId !== "string" ||
+      !/^dlg_[0-9a-f]{32}$/.test(body.delegationId) ||
+      typeof body.expiresAt !== "string" ||
+      !isObject(body.token) ||
+      typeof body.token.access_token !== "string" ||
+      !Number.isInteger(body.token.expires_in) ||
+      (body.token.expires_in as number) < 1
+    ) {
+      throw invalidResponse();
+    }
+    return {
+      delegationId: body.delegationId,
+      expiresAt: body.expiresAt,
+      token: {
+        accessToken: body.token.access_token,
+        expiresIn: body.token.expires_in as number,
+      },
+    };
+  }
+
   async placePrincipal(input: {
     tenantId: string;
     principalId: string;

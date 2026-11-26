@@ -134,6 +134,111 @@ paths:
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
         "403":
           $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
+  /v1/delegations:
+    post:
+      operationId: createDelegation
+      summary: Delegate a task scope to an actor and get a token for it.
+      description: >
+        The bearer is a bae6-authn token. With a direct token the caller is the initiator and
+        creates a root delegation; approvedActions are its approval of high-impact actions,
+        accepted only from a signed-in user's session token. The actor must be a service or an
+        agent owned by applicationId. The token keeps the caller's session, so it stops
+        re-exchanging once that session ends. With a delegated token the caller is that delegation's actor and may only nest under
+        it (parentDelegationId must be the token's delegation_id), narrowing scope and expiry.
+        The returned token names the initiator as `sub` and the actor as `act`, and carries the
+        scope as `delegated_resources` and `delegated_actions`. Not offered unless the
+        deployment pins a tenant model.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [actorPrincipalId, applicationId, taskId, allowedResources, allowedActions, expiresInSeconds, audience]
+              additionalProperties: false
+              properties:
+                actorPrincipalId:
+                  $ref: "../../../contracts/schemas/principal.json#/$defs/principalId"
+                applicationId:
+                  $ref: "../../../contracts/schemas/identity-context.json#/$defs/slug"
+                taskId:
+                  $ref: "../../../contracts/schemas/delegation.json#/$defs/taskId"
+                parentDelegationId:
+                  $ref: "../../../contracts/schemas/delegation.json#/$defs/delegationId"
+                allowedResources:
+                  $ref: "../../../contracts/schemas/delegation.json#/properties/allowedResources"
+                allowedActions:
+                  $ref: "../../../contracts/schemas/delegation.json#/properties/allowedActions"
+                approvedActions:
+                  type: array
+                  maxItems: 16
+                  uniqueItems: true
+                  items:
+                    $ref: "../../../contracts/schemas/resource.json#/$defs/action"
+                expiresInSeconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 86400
+                audience:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+      responses:
+        "201":
+          description: The delegation and a token for its actor.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [delegationId, expiresAt, token]
+                additionalProperties: false
+                properties:
+                  delegationId:
+                    $ref: "../../../contracts/schemas/delegation.json#/$defs/delegationId"
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  token:
+                    $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/InvalidRequest"
+        "401":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
+        "403":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
+        "503":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unavailable"
+  /v1/delegations/{id}/revoke:
+    post:
+      operationId: revokeDelegation
+      summary: Revoke a delegation and its descendants.
+      description: >
+        Requires a live, non-delegated bae6-authn bearer token for the initiating
+        principal in the same tenant. Repeating a revocation returns 204. Re-exchange of
+        a revoked delegation's tokens is refused at once; tokens already issued stay valid
+        until they expire, at most 300 seconds.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^dlg_[0-9a-f]{32}$"
+      responses:
+        "204":
+          description: The delegation and its descendants have been revoked.
+        "401":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "../../../contracts/openapi/common.yaml#/components/responses/NotFound"
   /auth/me:
     get:
       operationId: me
@@ -171,7 +276,8 @@ paths:
         service the subject token was issued to, and `audience` must be one that service is
         configured to re-exchange for, otherwise `invalid_target`. Re-exchange keeps the actor
         and can only narrow it; a subject token carrying `delegation_id` is refused with `invalid_request`
-        until delegation revocation can be checked. Actor tokens are not accepted.
+        unless that delegation is live and matches the token, and the new token expires no later
+        than the delegation. Actor tokens are not accepted.
       security:
         - bearer: []
       requestBody:
@@ -208,20 +314,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [access_token, issued_token_type, token_type, expires_in]
-                additionalProperties: false
-                properties:
-                  access_token:
-                    type: string
-                  issued_token_type:
-                    const: urn:ietf:params:oauth:token-type:jwt
-                  token_type:
-                    const: Bearer
-                  expires_in:
-                    type: integer
-                    minimum: 1
-                    maximum: 300
+                $ref: "#/components/schemas/TokenResponse"
         "400":
           $ref: "#/components/responses/OAuthError"
         "401":
@@ -252,6 +345,21 @@ components:
         type: string
         pattern: "^[A-Za-z0-9_-]{32,128}$"
   schemas:
+    TokenResponse:
+      type: object
+      required: [access_token, issued_token_type, token_type, expires_in]
+      additionalProperties: false
+      properties:
+        access_token:
+          type: string
+        issued_token_type:
+          const: urn:ietf:params:oauth:token-type:jwt
+        token_type:
+          const: Bearer
+        expires_in:
+          type: integer
+          minimum: 1
+          maximum: 300
     ProviderConnection:
       type: object
       required: [id, kind, displayName]

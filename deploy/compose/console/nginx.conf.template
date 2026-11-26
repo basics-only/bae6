@@ -11,6 +11,12 @@ http {
     location /auth/ {
       proxy_pass $authn;
     }
+    location = /v1/delegations {
+      proxy_pass $authn;
+    }
+    location /v1/delegations/ {
+      proxy_pass $authn;
+    }
     location / {
       proxy_pass $console;
     }

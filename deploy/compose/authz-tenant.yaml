@@ -14,3 +14,7 @@ services:
 
   authz-api-replica:
     <<: *tenant
+
+  authn:
+    environment:
+      BAE6_TENANT_MODEL_ID: ${BAE6_TENANT_MODEL_ID:?run the bootstrap-tenant command and export its output}
