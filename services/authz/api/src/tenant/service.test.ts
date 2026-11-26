@@ -999,6 +999,54 @@ test(
 );
 
 test(
+  "a delegated check needs the resource and action in scope and both the initiator and the actor allowed",
+  opts,
+  async () => {
+    await withTenant(async ({ svc, client }) => {
+      const agent = `agent:prn_${"b".repeat(32)}`;
+      const scope = {
+        actor: agent,
+        resources: ["model:llm"],
+        actions: ["model:invoke"],
+      };
+      await svc.createUnit(ROOTADM, "finance", "acme");
+      await svc.placeResource(ROOTADM, "model", "llm", "finance");
+      await svc.placeResource(ROOTADM, "model", "other", "finance");
+      const invokers = [ALICE, agent].flatMap((user) =>
+        ["model:llm", "model:other"].map((object) => ({
+          user,
+          relation: "invoker",
+          object,
+        })),
+      );
+      await client.write({ writes: invokers });
+      assert.equal(await svc.check(ALICE, "model", "llm", scope), true);
+      assert.equal(await svc.check(ALICE, "model", "other", scope), false);
+      assert.equal(
+        await svc.check(ALICE, "model", "llm", {
+          ...scope,
+          actions: ["model:delete"],
+        }),
+        false,
+      );
+      await assert.rejects(
+        svc.check(ALICE, "model", "llm", { ...scope, actor: "agent:x" }),
+        status(403),
+      );
+      await client.write({
+        deletes: [{ user: agent, relation: "invoker", object: "model:llm" }],
+      });
+      assert.equal(await svc.check(ALICE, "model", "llm", scope), false);
+      await client.write({
+        writes: [{ user: agent, relation: "invoker", object: "model:llm" }],
+        deletes: [{ user: ALICE, relation: "invoker", object: "model:llm" }],
+      });
+      assert.equal(await svc.check(ALICE, "model", "llm", scope), false);
+    });
+  },
+);
+
+test(
   "a check reports an unreachable store as 503, never as a denial",
   opts,
   async () => {

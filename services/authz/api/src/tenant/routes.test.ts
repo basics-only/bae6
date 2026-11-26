@@ -44,8 +44,19 @@ before(async () => {
         calls.push([organization, ...args.slice(0, 4)]);
         return "42";
       },
-      check: async (subject: string, type: string, id: string) => {
-        calls.push([organization, subject, type, id]);
+      check: async (
+        subject: string,
+        type: string,
+        id: string,
+        delegation?: unknown,
+      ) => {
+        calls.push([
+          organization,
+          subject,
+          type,
+          id,
+          ...(delegation ? [delegation] : []),
+        ]);
         if (id === "down")
           throw new HttpError(503, "authorization_unavailable", "Down.");
         return id === "yes";
@@ -376,4 +387,50 @@ test("admin routes refuse a missing scope, wrong methods, malformed paths and wh
     (await admin("PUT", "/finance/admins/access/user:escalate")).status,
     403,
   );
+});
+
+test("a delegated principal may only check, with its delegation, and every admin route refuses it", async () => {
+  const delegation = {
+    actor: `agent:prn_${"c".repeat(32)}`,
+    resources: ["model:yes"],
+    actions: ["model:invoke"],
+  };
+  who = { ...tenantAdmin, scopes: ["tenant:delegated"], delegation };
+  calls = [];
+  assert.deepEqual(
+    await (await check({ resourceType: "model", resourceId: "yes" })).json(),
+    { allowed: true },
+  );
+  assert.equal((await extAuthz("model:yes")).status, 200);
+  assert.deepEqual(calls, [
+    ["acme", tenantAdmin.subject, "model", "yes", delegation],
+    ["acme", tenantAdmin.subject, "model", "yes", delegation],
+  ]);
+  calls = [];
+  for (const res of [
+    await put({ principalType: "user", unit: "finance" }),
+    await admin("POST", "", { unit: "x", parent: "acme" }),
+    await admin("PUT", "/finance/ceilings/budget"),
+    await fetch(`${base}/v1/tenant/resources/unit`, {
+      method: "PUT",
+      headers: { authorization: "Bearer x" },
+      body: JSON.stringify({
+        resourceType: "model",
+        resourceId: "m",
+        unit: "u",
+      }),
+    }),
+    await fetch(`${base}/v1/tenant/resources/model/llm/access/user:x`, {
+      method: "PUT",
+      headers: { authorization: "Bearer x" },
+    }),
+  ])
+    assert.equal(res.status, 403);
+  assert.deepEqual(calls, []);
+  who = { ...tenantAdmin, delegation };
+  assert.equal(
+    (await check({ resourceType: "model", resourceId: "yes" })).status,
+    403,
+  );
+  who = tenantAdmin;
 });

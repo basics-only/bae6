@@ -467,7 +467,10 @@ paths:
         token's own `type:sub`, in the token's `tenant_id`; nothing in the body names a
         principal or tenant. `allowed` is true only when the resource's unit allows the
         action for that principal and no blocklist or denial applies. Unplaced or unknown
-        resources are `false`. Tokens for groups cannot be checked (`403`). An authorization
+        resources are `false`. A delegated token (`act` and `delegation_id`) is allowed only
+        if the resource and its action (such as `model:invoke`) are in `delegated_resources`
+        and `delegated_actions` and both `sub` and the actor are allowed. Such a token may use
+        only this check and ext-authz. Tokens for groups cannot be checked (`403`). An authorization
         store outage, a timeout (2 s) or a model too complex to resolve is `503`; clients
         treat every non-200 response as a deny. Reads at higher consistency, so a revocation
         is seen on the next check.
