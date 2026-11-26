@@ -165,20 +165,15 @@ def test_an_exchanged_token_about_to_expire_is_exchanged_again_on_every_request(
 def test_fastapi_dependency_returns_context_from_an_allowed_check() -> None:
     fakes = Fakes()
     identity = "prn_" + "a" * 32
-    fakes.answer = httpx.Response(
-        200,
-        json={
-            "allowed": True,
-            "executionContext": {
-                "tenantId": "acme",
-                "orgPath": ["acme"],
-                "principalId": identity,
-                "principalType": "user",
-                "actorId": identity,
-                "requestId": "signed-request",
-            },
-        },
-    )
+    context = {
+        "tenantId": "acme",
+        "orgPath": ["acme"],
+        "principalId": identity,
+        "principalType": "user",
+        "actorId": identity,
+        "requestId": "signed-request",
+    }
+    fakes.answer = httpx.Response(200, json={"allowed": True, "executionContext": context})
     guard = fakes.guard(include_execution_context=True)
     dependency = fastapi_dependency(guard, lambda request: RESOURCE)
     app = FastAPI()
@@ -198,4 +193,7 @@ def test_fastapi_dependency_returns_context_from_an_allowed_check() -> None:
         fakes.answer = httpx.Response(200, json={"allowed": False})
         assert client.get("/", headers=headers).status_code == 403
         fakes.answer = httpx.Response(200, json={"allowed": True})
+        assert client.get("/", headers=headers).status_code == 503
+        orphan = {**context, "delegationId": "dlg_" + "c" * 32}
+        fakes.answer = httpx.Response(200, json={"allowed": True, "executionContext": orphan})
         assert client.get("/", headers=headers).status_code == 503

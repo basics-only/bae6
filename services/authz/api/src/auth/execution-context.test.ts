@@ -39,18 +39,14 @@ test("execution context comes from the verified bearer token", async (t) => {
     principalId,
     principalType: "user",
     actorId: principalId,
-    requestId: "signed-request",
     costCenterId: "finance",
   });
   for (const claims of [
     { org_path: ["other"] },
-    { txn: 9 },
+    { org_path: undefined },
     { cost_center_id: [] },
   ])
-    assert.equal(
-      (await authenticate(await bearer(claims)))?.executionContext,
-      undefined,
-    );
+    assert.equal(await authenticate(await bearer(claims)), null);
   assert.equal(
     await authenticate(
       await bearer({}, (await generateKeyPair("ES256")).privateKey),

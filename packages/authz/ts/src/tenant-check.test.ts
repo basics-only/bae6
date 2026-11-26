@@ -71,7 +71,10 @@ test("tenant middleware exposes verified context only for a successful check", a
     actorId: `prn_${"a".repeat(32)}`,
     requestId: "signed-request",
   };
-  let response: unknown = { allowed: true, executionContext: context };
+  let response: unknown = {
+    allowed: true,
+    executionContext: { ...context, unexpected: "dropped" },
+  };
   const guard = tenantGuard({
     includeExecutionContext: true,
     authz: {
@@ -110,8 +113,17 @@ test("tenant middleware exposes verified context only for a successful check", a
   await hook(request, reply);
   assert.equal(status, 403);
   assert.equal(executionContextOf(request), undefined);
-  response = { allowed: true };
-  await hook(request, reply);
-  assert.equal(status, 503);
-  assert.equal(executionContextOf(request), undefined);
+  for (const bad of [
+    { allowed: true },
+    {
+      allowed: true,
+      executionContext: { ...context, delegationId: `dlg_${"c".repeat(32)}` },
+    },
+  ]) {
+    response = bad;
+    status = undefined;
+    await hook(request, reply);
+    assert.equal(status, 503);
+    assert.equal(executionContextOf(request), undefined);
+  }
 });

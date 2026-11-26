@@ -1,6 +1,5 @@
 import { ORGANIZATION_ID } from "./principal.js";
 
-const REQUEST_ID = /^[A-Za-z0-9._-]{1,64}$/;
 const OPTIONAL = [
   ["application_id", "applicationId", ORGANIZATION_ID],
   ["session_id", "sessionId", /^ses_[0-9a-f]{32}$/],
@@ -15,10 +14,8 @@ export function directExecutionContext(
   principalId: string,
   principalType: string,
 ) {
-  const { org_path: orgPath, txn: requestId } = claims;
+  const { org_path: orgPath } = claims;
   if (
-    typeof requestId !== "string" ||
-    !REQUEST_ID.test(requestId) ||
     !Array.isArray(orgPath) ||
     orgPath.length < 1 ||
     orgPath.length > 32 ||
@@ -42,7 +39,6 @@ export function directExecutionContext(
     principalId,
     principalType,
     actorId: principalId,
-    requestId,
     ...optional,
   };
 }

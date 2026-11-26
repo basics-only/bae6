@@ -203,7 +203,7 @@ export function tenantRoutes(
       if (includeExecutionContext && !principal.executionContext)
         throw new HttpError(
           403,
-          "forbidden",
+          "execution_context_unavailable",
           "The token does not carry execution context.",
         );
       const allowed = await service.check(
@@ -216,7 +216,10 @@ export function tenantRoutes(
         allowed,
         ...(allowed &&
           includeExecutionContext && {
-            executionContext: principal.executionContext,
+            executionContext: {
+              ...principal.executionContext,
+              requestId: requestIdOf(res),
+            },
           }),
       });
       return true;

@@ -61,8 +61,9 @@ export function bae6Authenticator(config: {
         sub,
         type,
       );
+      if (!executionContext) return null;
       return {
-        ...(executionContext && { executionContext }),
+        executionContext,
         subject: `${type}:${sub}`,
         organization: tenant,
         scopes: [TENANT_SCOPE],

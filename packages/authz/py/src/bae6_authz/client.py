@@ -395,6 +395,8 @@ class Authz:
                 if not isinstance(value, str):
                     raise _invalid_response()
                 optional[attribute] = value
+        if "delegation_id" in optional and "task_id" not in optional:
+            raise _invalid_response()
         return ExecutionContext(
             tenant_id,
             tuple(org_path),

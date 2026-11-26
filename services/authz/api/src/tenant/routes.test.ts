@@ -142,6 +142,43 @@ test("a check answers for the token principal in its own tenant and never from t
   ]);
 });
 
+test("a check returns the token's execution context with this request's ID, or refuses a credential without one", async () => {
+  const context = {
+    tenantId: "acme",
+    orgPath: ["acme"],
+    principalId: ALICE,
+    principalType: "user",
+    actorId: ALICE,
+  };
+  const ask = (requestId: string) =>
+    fetch(`${base}/v1/tenant/check`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer x",
+        "content-type": "application/json",
+        "x-request-id": requestId,
+      },
+      body: JSON.stringify({
+        resourceType: "model",
+        resourceId: "yes",
+        includeExecutionContext: true,
+      }),
+    });
+  who = { ...tenantAdmin, executionContext: context };
+  for (const requestId of ["req-1", "req-2"]) {
+    const res = await ask(requestId);
+    assert.equal(res.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await res.json(), {
+      allowed: true,
+      executionContext: { ...context, requestId },
+    });
+  }
+  who = tenantAdmin;
+  const refused = await ask("req-3");
+  assert.equal(refused.status, 403);
+  assert.equal((await refused.json()).code, "execution_context_unavailable");
+});
+
 test("a check refuses missing scope, bad requests and wrong methods, and reports an outage as 503", async () => {
   who = workload;
   assert.equal(

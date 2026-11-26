@@ -328,34 +328,43 @@ export class Authz {
       throw invalidResponse();
     if (!parsed.allowed) return undefined;
     const context = parsed.executionContext;
+    const required = [
+      "tenantId",
+      "principalId",
+      "principalType",
+      "actorId",
+      "requestId",
+    ] as const;
+    const optional = [
+      "applicationId",
+      "sessionId",
+      "taskId",
+      "delegationId",
+      "traceId",
+      "costCenterId",
+    ] as const;
     if (
       !isObject(context) ||
-      ![
-        "tenantId",
-        "principalId",
-        "principalType",
-        "actorId",
-        "requestId",
-      ].every((field) => typeof context[field] === "string") ||
+      !required.every((field) => typeof context[field] === "string") ||
       !Array.isArray(context.orgPath) ||
       context.orgPath.length < 1 ||
       context.orgPath.length > 32 ||
       context.orgPath[0] !== context.tenantId ||
       !context.orgPath.every((unit) => typeof unit === "string") ||
-      ![
-        "applicationId",
-        "sessionId",
-        "taskId",
-        "delegationId",
-        "traceId",
-        "costCenterId",
-      ].every(
+      !optional.every(
         (field) =>
           context[field] === undefined || typeof context[field] === "string",
-      )
+      ) ||
+      (context.delegationId !== undefined && context.taskId === undefined)
     )
       throw invalidResponse();
-    return context as unknown as ExecutionContext;
+    const fields = [...required, ...optional].filter(
+      (field) => context[field] !== undefined,
+    );
+    return Object.fromEntries([
+      ["orgPath", [...context.orgPath]],
+      ...fields.map((field) => [field, context[field]]),
+    ]) as ExecutionContext;
   }
 
   async require(input: {
