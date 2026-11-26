@@ -254,6 +254,7 @@ export async function exchangeSession(
   deps: ExchangeDeps,
   request: ExchangeRequest,
   txn: string,
+  application: string,
 ): Promise<TokenResponse> {
   if (request.subjectTokenType !== SESSION_TOKEN_TYPE)
     throw new OAuthError("invalid_request");
@@ -275,6 +276,7 @@ export async function exchangeSession(
     tenant_id: session.tenantId,
     org_path: principal.orgPath,
     principal_type: "user",
+    application_id: application,
     session_id: session.id,
     notAfter: Math.floor(session.expiresAt.getTime() / 1000),
   });

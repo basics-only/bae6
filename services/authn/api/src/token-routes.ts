@@ -45,21 +45,22 @@ export async function clientAuthenticated(
   clientSecret: TokenRouteDeps["clientSecret"],
   req: IncomingMessage,
   clients: readonly string[],
-): Promise<boolean> {
+): Promise<string | undefined> {
   const supplied = BEARER.exec(req.headers.authorization ?? "")?.[1];
-  if (!supplied) return false;
+  if (!supplied) return undefined;
   for (const client of clients) {
     const expected = await clientSecret(client);
     if (expected && timingSafeEqual(sha256(supplied), sha256(expected)))
-      return true;
+      return client;
   }
-  return false;
+  return undefined;
 }
 
 export function createTokenRoutes(deps: TokenRouteDeps) {
   async function authenticate(req: IncomingMessage, clients: string[]) {
-    if (!(await clientAuthenticated(deps.clientSecret, req, clients)))
-      throw new OAuthError("invalid_client");
+    const client = await clientAuthenticated(deps.clientSecret, req, clients);
+    if (!client) throw new OAuthError("invalid_client");
+    return client;
   }
 
   async function callerAudience(req: IncomingMessage, subjectToken: string) {
@@ -77,12 +78,15 @@ export function createTokenRoutes(deps: TokenRouteDeps) {
 
   async function token(req: IncomingMessage, res: ServerResponse) {
     const request = parseExchangeRequest(await readForm(req));
-    if (request.subjectTokenType === SESSION_TOKEN_TYPE)
-      await authenticate(req, [...deps.sessionClients]);
     const txn = String(res.getHeader("x-request-id"));
     const out =
       request.subjectTokenType === SESSION_TOKEN_TYPE
-        ? await exchangeSession(deps, request, txn)
+        ? await exchangeSession(
+            deps,
+            request,
+            txn,
+            await authenticate(req, [...deps.sessionClients]),
+          )
         : request.subjectTokenType === WORKLOAD_TOKEN_TYPE
           ? await exchangeWorkload(deps, request, txn)
           : await exchangeToken(
