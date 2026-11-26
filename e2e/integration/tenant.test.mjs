@@ -153,7 +153,10 @@ test("authn tokens get tenant decisions, a delegated admin cannot escalate, and 
     ["PUT", `/v1/tenant/units/acme/admins/access/${bobSubject}`],
     ["PUT", `/v1/tenant/units/${unit}/ceilings/settings`],
     ["DELETE", `/v1/tenant/units/${unit}/ceilings/access`],
-    ["PUT", `/v1/tenant/units/${unit}/guardrails/model_invoke/blocklist/user:*`],
+    [
+      "PUT",
+      `/v1/tenant/units/${unit}/guardrails/model_invoke/blocklist/user:*`,
+    ],
   ])
     assert.equal(await call(user, method, path), 403, `${method} ${path}`);
 
@@ -193,16 +196,26 @@ const delegate = async (jwt, body) => {
       authorization: `Bearer ${jwt}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ taskId: "summarize", expiresInSeconds: 120, ...body }),
+    body: JSON.stringify({
+      taskId: "summarize",
+      expiresInSeconds: 120,
+      ...body,
+    }),
   });
-  return { status: res.status, body: res.status === 201 ? await res.json() : null };
+  return {
+    status: res.status,
+    body: res.status === 201 ? await res.json() : null,
+  };
 };
 
 const checkStatus = async (jwt, resourceId) =>
   (
     await fetch(`${authz}/v1/tenant/check`, {
       method: "POST",
-      headers: { authorization: `Bearer ${jwt}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${jwt}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ resourceType: "model", resourceId }),
     })
   ).status;
@@ -222,12 +235,25 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
   const agent = encodeURIComponent(`agent:${agentId}`);
   inside(
     "bae6-postgres-1",
-    "psql", "-U", "postgres", "-d", "authn", "-v", "ON_ERROR_STOP=1", "-c",
+    "psql",
+    "-U",
+    "postgres",
+    "-d",
+    "authn",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-c",
     `INSERT INTO principals (id, tenant_id, type, owner_application_id) VALUES ('${agentId}', 'acme', 'agent', 'e2e-helper')`,
   );
 
-  assert.equal(await call(admin, "POST", "/v1/tenant/units", { unit, parent: "acme" }), 201);
-  assert.equal(await call(admin, "PUT", `/v1/tenant/units/${unit}/ceilings/access`), 200);
+  assert.equal(
+    await call(admin, "POST", "/v1/tenant/units", { unit, parent: "acme" }),
+    201,
+  );
+  assert.equal(
+    await call(admin, "PUT", `/v1/tenant/units/${unit}/ceilings/access`),
+    200,
+  );
   for (const model of [inScope, outOfScope]) {
     assert.equal(
       await call(admin, "PUT", "/v1/tenant/resources/unit", {
@@ -239,7 +265,11 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
     );
     for (const subject of [encodeURIComponent(bob.subject), agent])
       assert.equal(
-        await call(admin, "PUT", `/v1/tenant/resources/model/${model}/access/${subject}`),
+        await call(
+          admin,
+          "PUT",
+          `/v1/tenant/resources/model/${model}/access/${subject}`,
+        ),
         200,
       );
   }
@@ -257,7 +287,10 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
   assert.equal(await allowed(agentToken, outOfScope), false);
   assert.equal(await allowed(user, outOfScope), true);
   assert.equal(
-    await call(agentToken, "POST", "/v1/tenant/units", { unit: `${unit}-x`, parent: "acme" }),
+    await call(agentToken, "POST", "/v1/tenant/units", {
+      unit: `${unit}-x`,
+      parent: "acme",
+    }),
     403,
   );
 
@@ -276,7 +309,10 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
     assert.equal(await call(admin, "PUT", bobAccess), 200);
   }
 
-  const forAgent = await delegate(userAuthn, { ...scope, audience: "bae6-authn" });
+  const forAgent = await delegate(userAuthn, {
+    ...scope,
+    audience: "bae6-authn",
+  });
   assert.equal(forAgent.status, 201);
   const agentAuthn = forAgent.body.token.access_token;
   const nested = {
@@ -286,7 +322,12 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
     expiresInSeconds: 60,
   };
   assert.equal(
-    (await delegate(agentAuthn, { ...nested, allowedResources: [`model:${outOfScope}`] })).status,
+    (
+      await delegate(agentAuthn, {
+        ...nested,
+        allowedResources: [`model:${outOfScope}`],
+      })
+    ).status,
     403,
   );
   assert.equal(
@@ -295,14 +336,21 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
   );
   assert.equal((await delegate(agentAuthn, nested)).status, 201);
 
-  const revoked = await fetch(`${authn}/v1/delegations/${forAgent.body.delegationId}/revoke`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${userAuthn}` },
-  });
+  const revoked = await fetch(
+    `${authn}/v1/delegations/${forAgent.body.delegationId}/revoke`,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${userAuthn}` },
+    },
+  );
   assert.equal(revoked.status, 204);
   assert.equal((await delegate(agentAuthn, nested)).status, 404);
 
-  const brief = await delegate(userAuthn, { ...scope, audience: "bae6-authz", expiresInSeconds: 2 });
+  const brief = await delegate(userAuthn, {
+    ...scope,
+    audience: "bae6-authz",
+    expiresInSeconds: 2,
+  });
   assert.equal(brief.status, 201);
   assert.equal(await allowed(brief.body.token.access_token, inScope), true);
   await new Promise((r) => setTimeout(r, 3000));
