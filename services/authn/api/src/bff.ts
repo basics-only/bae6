@@ -5,15 +5,23 @@ import {
   type GraphOptions,
   overageGroups,
 } from "./adapters.js";
-import { revokeDelegation } from "./delegations.js";
-import { allActive, sessionLive } from "./exchange.js";
+import {
+  createDelegation,
+  DelegationError,
+  type DelegationErrorCode,
+  type DelegationLimits,
+  revokeDelegation,
+} from "./delegations.js";
+import { allActive, issue, OAuthError, sessionLive } from "./exchange.js";
 import { HttpError, send } from "./http.js";
+import { KeyError, type Signer } from "./keys.js";
 import {
   OidcError,
   type OidcErrorCode,
   type OidcProvider,
   type PendingLogin,
 } from "./oidc.js";
+import { readJson } from "./placement-routes.js";
 import {
   type ConnectionPolicy,
   loadConnection,
@@ -40,7 +48,24 @@ const RETURN_TO = /^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@/?-]{0,1023}$/;
 const OPAQUE = /^[A-Za-z0-9_-]{1,128}$/;
 const ROUTE = /^\/auth\/(login|callback)\/([^/]+)$/;
 
+const DELEGATIONS = "/v1/delegations";
 const REVOKE_DELEGATION = /^\/v1\/delegations\/(dlg_[0-9a-f]{32})\/revoke$/;
+const DELEGATION_STATUS: Record<DelegationErrorCode, number> = {
+  invalid_request: 400,
+  unknown_principal: 400,
+  principal_inactive: 400,
+  exceeds_limit: 400,
+  unknown_parent: 404,
+  exceeds_parent: 403,
+  approval_required: 403,
+};
+
+export interface DelegationDeps {
+  signers: ReadonlyMap<string, Signer>;
+  audiences: ReadonlySet<string>;
+  limits: DelegationLimits;
+  policyVersion: string;
+}
 
 export type LoginProvider = Pick<
   OidcProvider,
@@ -59,6 +84,7 @@ export interface BffDeps {
   graph?: GraphOptions;
   allowHttp?: boolean;
   httpOrigin?: boolean;
+  delegation?: DelegationDeps;
 }
 
 interface LoginCookie extends PendingLogin {
@@ -322,7 +348,7 @@ export function createBffRoutes(deps: BffDeps) {
         !(await sessionLive(db, tenantId, claims.sub, claims.session_id)))
     )
       throw unauthenticated;
-    return { tenantId, principalId: claims.sub };
+    return { tenantId, principalId: claims.sub, claims };
   }
 
   async function me(req: IncomingMessage, res: ServerResponse) {
@@ -359,6 +385,121 @@ export function createBffRoutes(deps: BffDeps) {
     if ((await revokeDelegation(db, tenantId, id, principalId)) === undefined)
       throw new HttpError(404, "not_found", "Delegation not found.");
     res.writeHead(204, { "cache-control": "no-store" }).end();
+  }
+
+  async function delegate(
+    req: IncomingMessage,
+    res: ServerResponse,
+    delegation: DelegationDeps,
+  ) {
+    const { tenantId, claims } = await bearerCaller(
+      req,
+      req.headers.authorization ?? "",
+    );
+    const body = await readJson(req);
+    const {
+      actorPrincipalId,
+      applicationId,
+      taskId,
+      parentDelegationId,
+      allowedResources,
+      allowedActions,
+      approvedActions,
+      expiresInSeconds,
+      audience,
+    } = body;
+    if (
+      typeof actorPrincipalId !== "string" ||
+      typeof applicationId !== "string" ||
+      typeof taskId !== "string" ||
+      typeof audience !== "string" ||
+      (parentDelegationId !== undefined &&
+        typeof parentDelegationId !== "string") ||
+      !Number.isInteger(expiresInSeconds) ||
+      (expiresInSeconds as number) < 1
+    )
+      throw new HttpError(
+        400,
+        "invalid_request",
+        "actorPrincipalId, applicationId, taskId, audience and expiresInSeconds are required.",
+      );
+    if (!delegation.audiences.has(audience))
+      throw new HttpError(400, "invalid_target", "Unknown audience.");
+    if (
+      claims.delegation_id !== parentDelegationId ||
+      (claims.act !== undefined && claims.delegation_id === undefined)
+    )
+      throw new HttpError(
+        403,
+        "forbidden",
+        "A delegated caller may only nest under its own delegation.",
+      );
+    const expiresAt = new Date(
+      Date.now() + (expiresInSeconds as number) * 1000,
+    );
+    let id: string;
+    try {
+      ({ id } = await createDelegation(db, delegation.limits, {
+        tenantId,
+        initiatingPrincipalId: claims.sub,
+        actorPrincipalId,
+        applicationId,
+        taskId,
+        ...(parentDelegationId !== undefined && { parentDelegationId }),
+        createdByPrincipalId: claims.act?.sub ?? claims.sub,
+        allowedResources: allowedResources as string[],
+        allowedActions: allowedActions as string[],
+        ...(approvedActions !== undefined && {
+          approvedActions: approvedActions as string[],
+        }),
+        expiresAt,
+        policyVersion: delegation.policyVersion,
+      }));
+    } catch (err) {
+      if (err instanceof DelegationError)
+        throw new HttpError(
+          DELEGATION_STATUS[err.code],
+          err.code,
+          "Delegation refused.",
+        );
+      throw err;
+    }
+    let token: Awaited<ReturnType<typeof issue>>;
+    try {
+      token = await issue(
+        { db, signers: delegation.signers, issuer: deps.issuer },
+        {
+          aud: audience,
+          sub: claims.sub,
+          txn: String(res.getHeader("x-request-id")),
+          tenant_id: tenantId,
+          org_path: claims.org_path,
+          principal_type: claims.principal_type,
+          act: { sub: actorPrincipalId },
+          application_id: applicationId,
+          task_id: taskId,
+          delegation_id: id,
+          delegated_resources: allowedResources as string[],
+          delegated_actions: allowedActions as string[],
+          ...(claims.cost_center_id && {
+            cost_center_id: claims.cost_center_id,
+          }),
+          ...(claims.trace_id && { trace_id: claims.trace_id }),
+          notAfter: Math.floor(expiresAt.getTime() / 1000),
+        },
+      );
+    } catch (err) {
+      if (err instanceof OAuthError)
+        throw new HttpError(400, "invalid_request", "Token refused.");
+      if (err instanceof KeyError)
+        throw new HttpError(503, "unavailable", "Token signing unavailable.");
+      throw err;
+    }
+    send(res, 201, {
+      delegationId: id,
+      expiresAt: expiresAt.toISOString(),
+      token,
+    });
   }
 
   async function providers(req: IncomingMessage, res: ServerResponse) {
@@ -430,6 +571,12 @@ export function createBffRoutes(deps: BffDeps) {
         await logout(req, res);
       else if (req.method === "POST" && delegation)
         await revoke(req, res, delegation);
+      else if (
+        req.method === "POST" &&
+        url.pathname === DELEGATIONS &&
+        deps.delegation
+      )
+        await delegate(req, res, deps.delegation);
       else return false;
     } catch (err) {
       throw asHttp(err);

@@ -144,6 +144,8 @@ const cases: [string, Record<string, string>][] = [
       session_id: "optional",
       task_id: "optional",
       delegation_id: "optional",
+      delegated_resources: "optional",
+      delegated_actions: "optional",
       cost_center_id: "optional",
       trace_id: "optional",
     } satisfies Shape<Bae6TokenClaims>,

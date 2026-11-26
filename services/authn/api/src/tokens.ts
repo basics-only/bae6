@@ -19,6 +19,10 @@ const TRACE_ID = /^[0-9a-f]{32}$/;
 const TASK_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const DELEGATION_ID = /^dlg_[0-9a-f]{32}$/;
 const JTI = /^[A-Za-z0-9_-]{16,64}$/;
+export const RESOURCE =
+  /^(application|api|model|agent|prompt|mcp_server|tool|dataset|document|service):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+export const ACTION = /^[a-z][a-z0-9_]{0,31}:[a-z][a-z0-9_]{0,31}$/;
+export const MAX_DELEGATED = 16;
 const PRINCIPAL_TYPES = new Set([
   "user",
   "group",
@@ -43,6 +47,8 @@ export interface Bae6Claims {
   session_id?: string;
   task_id?: string;
   delegation_id?: string;
+  delegated_resources?: string[];
+  delegated_actions?: string[];
   cost_center_id?: string;
   trace_id?: string;
 }
@@ -78,8 +84,17 @@ const KNOWN = new Set([
   "org_path",
   "principal_type",
   "act",
+  "delegated_resources",
+  "delegated_actions",
   ...OPTIONAL.map(([name]) => name),
 ]);
+
+const scopeList = (v: unknown, re: RegExp) =>
+  Array.isArray(v) &&
+  v.length >= 1 &&
+  v.length <= MAX_DELEGATED &&
+  new Set(v).size === v.length &&
+  v.every((s) => typeof s === "string" && re.test(s));
 
 function claimsProblem(c: Record<string, unknown>): string | undefined {
   const str = (v: unknown, re: RegExp) => typeof v === "string" && re.test(v);
@@ -122,6 +137,19 @@ function claimsProblem(c: Record<string, unknown>): string | undefined {
     (c.act === undefined || c.task_id === undefined)
   )
     return "delegation_id";
+  const delegated = c.delegation_id !== undefined;
+  if (
+    delegated
+      ? !scopeList(c.delegated_resources, RESOURCE)
+      : c.delegated_resources !== undefined
+  )
+    return "delegated_resources";
+  if (
+    delegated
+      ? !scopeList(c.delegated_actions, ACTION)
+      : c.delegated_actions !== undefined
+  )
+    return "delegated_actions";
   return undefined;
 }
 

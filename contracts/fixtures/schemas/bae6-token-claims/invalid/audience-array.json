@@ -19,5 +19,11 @@
     "sub": "prn_22222222222222222222222222222222"
   },
   "task_id": "task-42",
-  "delegation_id": "dlg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  "delegation_id": "dlg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "delegated_resources": [
+    "model:finance-llm"
+  ],
+  "delegated_actions": [
+    "model:invoke"
+  ]
 }

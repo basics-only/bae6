@@ -1,13 +1,11 @@
 import { randomBytes } from "node:crypto";
 import type { Pool } from "pg";
+import { ACTION, MAX_DELEGATED, RESOURCE } from "./tokens.js";
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const TASK_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const PRINCIPAL_ID = /^prn_[0-9a-f]{32}$/;
 const DELEGATION_ID = /^dlg_[0-9a-f]{32}$/;
-const RESOURCE =
-  /^(application|api|model|agent|prompt|mcp_server|tool|dataset|document|service):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const ACTION = /^[a-z][a-z0-9_]{0,31}:[a-z][a-z0-9_]{0,31}$/;
 const MAX_DEPTH = 8;
 
 export type DelegationErrorCode =
@@ -81,8 +79,8 @@ function validate(limits: DelegationLimits, d: NewDelegation) {
     !TASK_ID.test(d.taskId) ||
     (d.parentDelegationId !== undefined &&
       !DELEGATION_ID.test(d.parentDelegationId)) ||
-    !distinct(d.allowedResources, 100, RESOURCE) ||
-    !distinct(d.allowedActions, 50, ACTION) ||
+    !distinct(d.allowedResources, MAX_DELEGATED, RESOURCE) ||
+    !distinct(d.allowedActions, MAX_DELEGATED, ACTION) ||
     !Array.isArray(approved) ||
     !(d.expiresAt instanceof Date) ||
     !subset(approved, d.allowedActions) ||

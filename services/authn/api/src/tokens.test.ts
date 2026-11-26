@@ -179,6 +179,13 @@ test("minting refuses claims outside the contract", { skip }, async () => {
     { org_path: ["globex"] },
     { org_path: [] },
     { delegation_id: `dlg_${"0".repeat(32)}` },
+    {
+      delegation_id: `dlg_${"0".repeat(32)}`,
+      act: { sub: ALICE },
+      task_id: "t",
+      delegated_actions: ["model:invoke"],
+    },
+    { delegated_resources: ["model:llm"], delegated_actions: ["model:invoke"] },
     { act: { sub: ALICE, extra: 1 } as never },
     { surprise: true } as never,
   ])
@@ -478,6 +485,8 @@ test(
             act: { sub: AGENT },
             task_id: "task-1",
             application_id: "helper",
+            delegated_resources: ["model:finance-llm"],
+            delegated_actions: ["model:invoke"],
             ...claims,
           }).filter(([, v]) => v !== undefined),
         ),
@@ -495,6 +504,8 @@ test(
       audience: "data-api",
     });
     assert.equal(issued.delegation_id, id);
+    assert.deepEqual(issued.delegated_resources, ["model:finance-llm"]);
+    assert.deepEqual(issued.delegated_actions, ["model:invoke"]);
     assert.ok(issued.exp <= Math.floor(Date.now() / 1000) + 120);
     for (const claims of [
       { delegation_id: `dlg_${"0".repeat(32)}` },

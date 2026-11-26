@@ -12,6 +12,8 @@ from bae6_authn import (
     AuthnAuthError,
     AuthnTimeoutError,
     AuthnValidationError,
+    Delegation,
+    Token,
 )
 
 SECRET = "client-secret-xxxxxxxxxxxxxxxxxxxxxxxx"
@@ -223,6 +225,58 @@ def test_revoke_delegation_uses_the_initiating_principal_bearer() -> None:
     assert (
         _run(handler, lambda authn: authn.revoke_delegation(delegation_id, "initiator-token"))
         is None
+    )
+
+
+def test_create_delegation_sends_the_scope_with_the_callers_bearer_and_returns_the_actors_token() -> (
+    None
+):
+    delegation_id = "dlg_" + "c" * 32
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v1/delegations"
+        assert request.headers["authorization"] == "Bearer user-token"
+        assert json.loads(request.content) == {
+            "actorPrincipalId": "prn_" + "a" * 32,
+            "applicationId": "helper",
+            "taskId": "summarize",
+            "allowedResources": ["model:llm"],
+            "allowedActions": ["model:invoke"],
+            "expiresInSeconds": 120,
+            "audience": "bae6-authz",
+        }
+        return httpx.Response(
+            201,
+            json={
+                "delegationId": delegation_id,
+                "expiresAt": "2026-11-25T12:00:00.000Z",
+                "token": {
+                    "access_token": "delegated",
+                    "issued_token_type": "urn:ietf:params:oauth:token-type:jwt",
+                    "token_type": "Bearer",
+                    "expires_in": 120,
+                },
+            },
+        )
+
+    created = _run(
+        handler,
+        lambda authn: authn.create_delegation(
+            "user-token",
+            actor_principal_id="prn_" + "a" * 32,
+            application_id="helper",
+            task_id="summarize",
+            allowed_resources=["model:llm"],
+            allowed_actions=["model:invoke"],
+            expires_in_seconds=120,
+            audience="bae6-authz",
+        ),
+    )
+    assert created == Delegation(
+        delegation_id=delegation_id,
+        expires_at="2026-11-25T12:00:00.000Z",
+        token=Token(access_token="delegated", expires_in=120),
     )
 
 

@@ -21,6 +21,8 @@ const CARRIED = [
   "session_id",
   "task_id",
   "delegation_id",
+  "delegated_resources",
+  "delegated_actions",
   "cost_center_id",
   "trace_id",
 ] as const;
@@ -257,8 +259,8 @@ export async function exchangeSession(
   });
 }
 
-async function issue(
-  deps: ExchangeDeps,
+export async function issue(
+  deps: Pick<ExchangeDeps, "db" | "signers" | "issuer">,
   input: MintInput,
 ): Promise<TokenResponse> {
   let minted: Awaited<ReturnType<typeof mintToken>>;

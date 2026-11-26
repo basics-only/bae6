@@ -34,8 +34,20 @@
     "session_id": { "$ref": "execution-context.json#/$defs/sessionId" },
     "task_id": { "$ref": "delegation.json#/$defs/taskId" },
     "delegation_id": { "$ref": "delegation.json#/$defs/delegationId" },
+    "delegated_resources": {
+      "description": "The delegation's allowed resources, so verifiers can bound a delegated check without calling authn.",
+      "$ref": "delegation.json#/properties/allowedResources"
+    },
+    "delegated_actions": {
+      "description": "The delegation's allowed actions.",
+      "$ref": "delegation.json#/properties/allowedActions"
+    },
     "cost_center_id": { "$ref": "identity-context.json#/$defs/slug" },
     "trace_id": { "$ref": "execution-context.json#/$defs/traceId" }
   },
-  "dependentRequired": { "delegation_id": ["act", "task_id"] }
+  "dependentRequired": {
+    "delegation_id": ["act", "task_id", "delegated_resources", "delegated_actions"],
+    "delegated_resources": ["delegation_id"],
+    "delegated_actions": ["delegation_id"]
+  }
 }

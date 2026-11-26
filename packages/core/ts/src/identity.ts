@@ -106,6 +106,8 @@ export interface Bae6TokenClaims {
   session_id?: string;
   task_id?: string;
   delegation_id?: string;
+  delegated_resources?: string[];
+  delegated_actions?: string[];
   cost_center_id?: string;
   trace_id?: string;
 }
