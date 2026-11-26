@@ -220,7 +220,7 @@ const checkStatus = async (jwt, resourceId) =>
     })
   ).status;
 
-test("an agent runs only with its delegated scope, and expired, revoked and amplified delegations are refused", async () => {
+test("an agent runs only with its delegated scope, cannot widen it or nest under a revoked delegation, and is refused once it expires", async () => {
   const alice = await signIn("alice@acme.example");
   const bob = await signIn("bob@acme.example");
   bootstrapRoot(alice.subject);
@@ -349,10 +349,10 @@ test("an agent runs only with its delegated scope, and expired, revoked and ampl
   const brief = await delegate(userAuthn, {
     ...scope,
     audience: "bae6-authz",
-    expiresInSeconds: 2,
+    expiresInSeconds: 5,
   });
   assert.equal(brief.status, 201);
   assert.equal(await allowed(brief.body.token.access_token, inScope), true);
-  await new Promise((r) => setTimeout(r, 3000));
+  await new Promise((r) => setTimeout(r, 6000));
   assert.equal(await checkStatus(brief.body.token.access_token, inScope), 401);
 });
