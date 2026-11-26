@@ -340,7 +340,8 @@ export function createBffRoutes(deps: BffDeps) {
     const principals: { id: string; type?: string }[] = [
       { id: claims.sub, type: claims.principal_type },
     ];
-    if (claims.act) principals.push({ id: claims.act.sub });
+    if (claims.act)
+      principals.push({ id: claims.act.sub, type: claims.act.principal_type });
     const tenantId = claims.tenant_id;
     if (
       (hostTenant !== undefined && hostTenant !== tenantId) ||
@@ -451,8 +452,9 @@ export function createBffRoutes(deps: BffDeps) {
       Date.now() + (expiresInSeconds as number) * 1000,
     );
     let id: string;
+    let actorType: "agent" | "service";
     try {
-      ({ id } = await createDelegation(db, delegation.limits, {
+      ({ id, actorType } = await createDelegation(db, delegation.limits, {
         tenantId,
         initiatingPrincipalId: claims.sub,
         actorPrincipalId,
@@ -488,7 +490,7 @@ export function createBffRoutes(deps: BffDeps) {
           tenant_id: tenantId,
           org_path: claims.org_path,
           principal_type: claims.principal_type,
-          act: { sub: actorPrincipalId },
+          act: { sub: actorPrincipalId, principal_type: actorType },
           application_id: applicationId,
           task_id: taskId,
           delegation_id: id,

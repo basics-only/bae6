@@ -86,6 +86,7 @@ class ExecutionContext(TypedDict):
 
 class Actor(TypedDict):
     sub: str
+    principal_type: Literal["agent", "service"]
 
 
 class Bae6TokenClaims(TypedDict):

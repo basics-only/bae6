@@ -193,7 +193,8 @@ export async function exchangeToken(
   const principals: { id: string; type?: string }[] = [
     { id: subject.sub, type: subject.principal_type },
   ];
-  if (subject.act) principals.push({ id: subject.act.sub });
+  if (subject.act)
+    principals.push({ id: subject.act.sub, type: subject.act.principal_type });
   if (
     subject.exp <= Math.floor(Date.now() / 1000) ||
     !(await allActive(deps.db, subject.tenant_id, principals)) ||

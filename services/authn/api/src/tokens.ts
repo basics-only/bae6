@@ -42,7 +42,7 @@ export interface Bae6Claims {
   tenant_id: string;
   org_path: string[];
   principal_type: string;
-  act?: { sub: string };
+  act?: { sub: string; principal_type: "agent" | "service" };
   application_id?: string;
   session_id?: string;
   task_id?: string;
@@ -125,8 +125,9 @@ function claimsProblem(c: Record<string, unknown>): string | undefined {
     if (
       !act ||
       typeof act !== "object" ||
-      Object.keys(act).join() !== "sub" ||
-      !str(act.sub, PRINCIPAL_ID)
+      Object.keys(act).sort().join() !== "principal_type,sub" ||
+      !str(act.sub, PRINCIPAL_ID) ||
+      (act.principal_type !== "agent" && act.principal_type !== "service")
     )
       return "act";
   }

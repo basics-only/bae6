@@ -118,7 +118,7 @@ export async function createDelegation(
   db: Pool,
   limits: DelegationLimits,
   input: NewDelegation,
-): Promise<{ id: string }> {
+): Promise<{ id: string; actorType: "agent" | "service" }> {
   validate(limits, input);
   const id = `dlg_${randomBytes(16).toString("hex")}`;
   const client = await db.connect();
@@ -168,12 +168,14 @@ export async function createDelegation(
     if (principals.some((p) => p.status !== "active"))
       throw new DelegationError("principal_inactive");
     const actor = principals.find((p) => p.id === input.actorPrincipalId);
-    if (
-      actor?.type === "agent"
-        ? actor.owner_application_id !== input.applicationId
-        : actor?.type !== "service"
-    )
-      throw new DelegationError("invalid_actor");
+    const actorType =
+      actor?.type === "agent" &&
+      actor.owner_application_id === input.applicationId
+        ? "agent"
+        : actor?.type === "service"
+          ? "service"
+          : undefined;
+    if (!actorType) throw new DelegationError("invalid_actor");
     await client.query(
       `INSERT INTO delegations
          (id, tenant_id, initiating_principal_id, actor_principal_id, application_id,
@@ -197,7 +199,7 @@ export async function createDelegation(
       ],
     );
     await client.query("COMMIT");
-    return { id };
+    return { id, actorType };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {
       broken = true;

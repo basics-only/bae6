@@ -259,7 +259,7 @@ test(
     const helper = `prn_${"8".repeat(32)}`;
     const outsider = `prn_${"6".repeat(32)}`;
     await db.query(
-      `INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'acme', 'user'), ($2, 'globex', 'user')`,
+      `INSERT INTO principals (id, tenant_id, type) VALUES ($1, 'acme', 'service'), ($2, 'globex', 'user')`,
       [helper, outsider],
     );
     const token = async (claims: Partial<MintInput> = {}) =>
@@ -283,7 +283,17 @@ test(
     assert.equal(ok.status, 200);
     assert.equal((await ok.json()).principal.id, s.principalId);
     assert.equal((await me("Basic abc", base, cookie)).status, 200);
-    const acted = await token({ act: { sub: helper } });
+    const acted = await token({
+      act: { sub: helper, principal_type: "service" },
+    });
+    assert.equal(
+      (
+        await me(
+          `Bearer ${await token({ act: { sub: helper, principal_type: "agent" } })}`,
+        )
+      ).status,
+      401,
+    );
     assert.equal((await me(`Bearer ${acted}`)).status, 200);
     await db.query("UPDATE principals SET status = 'disabled' WHERE id = $1", [
       helper,
@@ -786,7 +796,7 @@ test(
         await revoke(
           root,
           await tokenFor(owner, {
-            act: { sub: actor },
+            act: { sub: actor, principal_type: "agent" },
             task_id: common.taskId,
             application_id: "helper",
             delegation_id: root,
@@ -875,7 +885,7 @@ test(
       audience: AUTHN_AUDIENCE,
     });
     assert.equal(claims.sub, owner.principalId);
-    assert.deepEqual(claims.act, { sub: agent });
+    assert.deepEqual(claims.act, { sub: agent, principal_type: "agent" });
     assert.equal(claims.delegation_id, delegationId);
     assert.equal(claims.task_id, "summarize");
     assert.deepEqual(claims.delegated_resources, scope.allowedResources);
@@ -957,7 +967,7 @@ test(
       { issuer: AUTHN_ISSUER, audience: "bae6-authz" },
     );
     assert.equal(childClaims.sub, owner.principalId);
-    assert.deepEqual(childClaims.act, { sub: helper });
+    assert.deepEqual(childClaims.act, { sub: helper, principal_type: "agent" });
     assert.equal(childClaims.session_id, owner.id);
 
     assert.equal(

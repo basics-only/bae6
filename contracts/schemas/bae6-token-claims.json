@@ -26,9 +26,12 @@
     "act": {
       "description": "The immediate actor working for `sub`. Nested chains are not repeated here; they are recovered from the delegation's `parentDelegationId`.",
       "type": "object",
-      "required": ["sub"],
+      "required": ["sub", "principal_type"],
       "additionalProperties": false,
-      "properties": { "sub": { "$ref": "principal.json#/$defs/principalId" } }
+      "properties": {
+        "sub": { "$ref": "principal.json#/$defs/principalId" },
+        "principal_type": { "enum": ["agent", "service"] }
+      }
     },
     "application_id": { "$ref": "identity-context.json#/$defs/slug" },
     "session_id": { "$ref": "execution-context.json#/$defs/sessionId" },
